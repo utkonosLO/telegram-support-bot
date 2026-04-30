@@ -12,7 +12,9 @@ log = logging.getLogger(__name__)
 
 
 async def get_user_id_from_file(topic_id: int) -> Optional[int]:
-    """Получает user_id из файла по topic_id"""
+    """
+    Получает user_id из файла по topic_id
+    """
     try:
         file_path = '/app/data/topic_links.txt'
         if not os.path.exists(file_path):
@@ -31,7 +33,7 @@ async def get_user_id_from_file(topic_id: int) -> Optional[int]:
                         file_topic_id = int(parts[0])
                         if file_topic_id == topic_id:
                             user_id = int(parts[2])
-                            log.info(f"✅ Найден user_id {user_id} для топика {topic_id} из файла")
+                            log.info(f"✅ Найден user_id {user_id} для топика {topic_id}")
                             return user_id
                     except ValueError:
                         continue
@@ -42,262 +44,250 @@ async def get_user_id_from_file(topic_id: int) -> Optional[int]:
         return None
 
 
-async def save_user_id_to_file(topic_id: int, chat_id: int, user_id: int) -> bool:
-    """Сохраняет связь в файл"""
-    try:
-        os.makedirs('/app/data', exist_ok=True)
-        async with aiofiles.open('/app/data/topic_links.txt', 'a') as f:
-            await f.write(f"{topic_id},{chat_id},{user_id}\n")
-        log.info(f"💾 Сохранена связь: топик {topic_id} -> пользователь {user_id}")
-        return True
-    except Exception as e:
-        log.error(f"❌ Ошибка сохранения в файл: {e}")
-        return False
-
-
-async def send_message_to_user(bot: Bot, user_id: int, text: str, parse_mode: str = "HTML") -> bool:
-    """Отправляет текстовое сообщение пользователю"""
-    try:
-        log.info(f"📤 Отправляем текстовое сообщение пользователю {user_id}")
-        await bot.send_message(chat_id=user_id, text=text, parse_mode=parse_mode)
-        log.info(f"✅ Текстовое сообщение доставлено пользователю {user_id}")
-        return True
-    except TelegramForbiddenError:
-        log.error(f"❌ TelegramForbiddenError: бот заблокирован или пользователь {user_id} не начал диалог")
-        return False
-    except TelegramBadRequest as e:
-        log.error(f"❌ TelegramBadRequest: {e}")
-        return False
-    except Exception as e:
-        log.error(f"❌ Неизвестная ошибка: {e}")
-        return False
-
-
-async def send_photo_to_user(bot: Bot, user_id: int, photo_file_id: str, caption: str = None) -> bool:
-    """Отправляет фото пользователю"""
-    try:
-        log.info(f"📷 Отправляем фото пользователю {user_id}")
-        await bot.send_photo(chat_id=user_id, photo=photo_file_id, caption=caption, parse_mode="HTML")
-        log.info(f"✅ Фото доставлено пользователю {user_id}")
-        return True
-    except Exception as e:
-        log.error(f"❌ Ошибка при отправке фото: {e}")
-        return False
-
-
-async def send_document_to_user(bot: Bot, user_id: int, document_file_id: str, caption: str = None) -> bool:
-    """Отправляет документ пользователю"""
-    try:
-        log.info(f"📄 Отправляем документ пользователю {user_id}")
-        await bot.send_document(chat_id=user_id, document=document_file_id, caption=caption, parse_mode="HTML")
-        log.info(f"✅ Документ доставлен пользователю {user_id}")
-        return True
-    except Exception as e:
-        log.error(f"❌ Ошибка при отправке документа: {e}")
-        return False
-
-
-async def send_video_to_user(bot: Bot, user_id: int, video_file_id: str, caption: str = None) -> bool:
-    """Отправляет видео пользователю"""
-    try:
-        log.info(f"🎬 Отправляем видео пользователю {user_id}")
-        await bot.send_video(chat_id=user_id, video=video_file_id, caption=caption, parse_mode="HTML")
-        log.info(f"✅ Видео доставлено пользователю {user_id}")
-        return True
-    except Exception as e:
-        log.error(f"❌ Ошибка при отправке видео: {e}")
-        return False
-
-
-async def send_sticker_to_user(bot: Bot, user_id: int, sticker_file_id: str) -> bool:
-    """Отправляет стикер пользователю"""
-    try:
-        log.info(f"🏷️ Отправляем стикер пользователю {user_id}")
-        await bot.send_sticker(chat_id=user_id, sticker=sticker_file_id)
-        log.info(f"✅ Стикер доставлен пользователю {user_id}")
-        return True
-    except Exception as e:
-        log.error(f"❌ Ошибка при отправке стикера: {e}")
-        return False
-
-
-async def send_voice_to_user(bot: Bot, user_id: int, voice_file_id: str, caption: str = None) -> bool:
-    """Отправляет голосовое сообщение пользователю"""
-    try:
-        log.info(f"🎤 Отправляем голосовое сообщение пользователю {user_id}")
-        await bot.send_voice(chat_id=user_id, voice=voice_file_id, caption=caption)
-        log.info(f"✅ Голосовое сообщение доставлено пользователю {user_id}")
-        return True
-    except Exception as e:
-        log.error(f"❌ Ошибка при отправке голосового сообщения: {e}")
-        return False
-
-
-async def send_audio_to_user(bot: Bot, user_id: int, audio_file_id: str, caption: str = None) -> bool:
-    """Отправляет аудио пользователю"""
-    try:
-        log.info(f"🎵 Отправляем аудио пользователю {user_id}")
-        await bot.send_audio(chat_id=user_id, audio=audio_file_id, caption=caption)
-        log.info(f"✅ Аудио доставлено пользователю {user_id}")
-        return True
-    except Exception as e:
-        log.error(f"❌ Ошибка при отправке аудио: {e}")
-        return False
-
-
 @router.message(F.message_thread_id, F.chat.type == "supergroup")
 async def operator_reply_handler(message: Message, bot: Bot):
-    """Обработчик ответов оператора в топике"""
+    """
+    Обработчик ответов оператора в топике
+    """
     topic_id = message.message_thread_id
     chat_id = message.chat.id
     operator_id = message.from_user.id
 
+    # ========== ИГНОРИРУЕМ СЛУЖЕБНЫЕ СООБЩЕНИЯ ==========
+    if message.content_type in [
+        "forum_topic_created",
+        "forum_topic_closed", 
+        "forum_topic_reopened",
+        "general_forum_topic_hidden",
+        "general_forum_topic_unhidden",
+        "new_chat_members",
+        "left_chat_member",
+        "pinned_message"
+    ]:
+        log.info(f"⏭️ Игнорируем служебное сообщение (тип: {message.content_type}) в топике {topic_id}")
+        return
+    # ===================================================
+
     log.info(f"🔍 Получено сообщение в топике {topic_id} от оператора {operator_id}")
+    log.info(f"📋 Тип сообщения: {message.content_type}")
 
-    # ДИАГНОСТИКА: выводим все атрибуты сообщения
-    log.info(f"🔍 Тип сообщения (content_type): {message.content_type}")
-    log.info(f"🔍 Есть text: {bool(message.text)}")
-    log.info(f"🔍 Есть photo: {bool(message.photo)}")
-    log.info(f"🔍 Есть video: {bool(message.video)}")
-    log.info(f"🔍 Есть document: {bool(message.document)}")
-    log.info(f"🔍 Есть sticker: {bool(message.sticker)}")
-    log.info(f"🔍 Есть voice: {bool(message.voice)}")
-    log.info(f"🔍 Есть audio: {bool(message.audio)}")
-    log.info(f"🔍 Есть animation: {bool(message.animation)}")
-    log.info(f"🔍 Есть video_note: {bool(message.video_note)}")
-    log.info(f"🔍 Есть contact: {bool(message.contact)}")
-    log.info(f"🔍 Есть location: {bool(message.location)}")
-    log.info(f"🔍 Есть poll: {bool(message.poll)}")
-    log.info(f"🔍 Есть dice: {bool(message.dice)}")
-    log.info(f"🔍 Есть forum_topic_created: {bool(message.forum_topic_created)}")
-    log.info(f"🔍 Есть forum_topic_closed: {bool(message.forum_topic_closed)}")
-
-    # Ищем пользователя по топику в файле
+    # Ищем пользователя по топику
     user_id = await get_user_id_from_file(topic_id)
 
     if not user_id:
         log.error(f"❌ Не найден пользователь для топика {topic_id}")
         await message.reply(
             "⚠️ **Не удалось определить пользователя для этого топика.**\n\n"
-            "💡 **Решение:** Попросите пользователя написать любое сообщение боту, "
-            "а затем создайте НОВУЮ заявку через /start."
+            "💡 **Решение:**\n"
+            "1. Попросите пользователя написать любое сообщение боту\n"
+            "2. После этого создайте НОВУЮ заявку через /start\n\n"
+            "📌 Только новые заявки после обновления бота работают корректно."
         )
         return
 
     log.info(f"✅ Найден пользователь {user_id} для топика {topic_id}")
 
-    # Обрабатываем разные типы сообщений
+    # Отправляем сообщение пользователю в зависимости от типа
     success = False
+    error_message = ""
 
-    if message.text:
-        log.info(f"📝 Текст: {message.text[:100] if message.text else '[пусто]'}")
-        success = await send_message_to_user(bot, user_id, message.text)
-    
-    elif message.photo:
-        photo = message.photo[-1]
-        caption = message.caption or ""
-        success = await send_photo_to_user(bot, user_id, photo.file_id, caption)
-    
-    elif message.document:
-        caption = message.caption or ""
-        success = await send_document_to_user(bot, user_id, message.document.file_id, caption)
-    
-    elif message.video:
-        caption = message.caption or ""
-        success = await send_video_to_user(bot, user_id, message.video.file_id, caption)
-    
-    elif message.sticker:
-        success = await send_sticker_to_user(bot, user_id, message.sticker.file_id)
-    
-    elif message.voice:
-        caption = message.caption or ""
-        success = await send_voice_to_user(bot, user_id, message.voice.file_id, caption)
-    
-    elif message.audio:
-        caption = message.caption or ""
-        success = await send_audio_to_user(bot, user_id, message.audio.file_id, caption)
-    
-    else:
-        log.warning(f"⚠️ Неподдерживаемый тип сообщения: {message.content_type}")
-        await message.reply(
-            f"⚠️ **Этот тип сообщений пока не поддерживается.**\n\n"
-            f"📋 Тип вашего сообщения: `{message.content_type}`\n\n"
-            f"Поддерживаются:\n"
-            f"• Текстовые сообщения\n"
-            f"• Фото\n"
-            f"• Документы\n"
-            f"• Видео\n"
-            f"• Стикеры\n"
-            f"• Голосовые сообщения\n"
-            f"• Аудио"
-        )
-        return
+    try:
+        if message.text:
+            # Текстовое сообщение
+            log.info(f"📤 Отправляем текстовое сообщение пользователю {user_id}")
+            await bot.send_message(
+                chat_id=user_id,
+                text=message.text,
+                parse_mode="HTML"
+            )
+            success = True
+            log.info(f"✅ Текст отправлен")
 
+        elif message.photo:
+            # Фото
+            photo = message.photo[-1]
+            log.info(f"📤 Отправляем фото пользователю {user_id}")
+            await bot.send_photo(
+                chat_id=user_id,
+                photo=photo.file_id,
+                caption=message.caption,
+                parse_mode="HTML"
+            )
+            success = True
+            log.info(f"✅ Фото отправлено")
+
+        elif message.document:
+            # Документ
+            log.info(f"📤 Отправляем документ пользователю {user_id}")
+            await bot.send_document(
+                chat_id=user_id,
+                document=message.document.file_id,
+                caption=message.caption,
+                parse_mode="HTML"
+            )
+            success = True
+            log.info(f"✅ Документ отправлен")
+
+        elif message.video:
+            # Видео
+            log.info(f"📤 Отправляем видео пользователю {user_id}")
+            await bot.send_video(
+                chat_id=user_id,
+                video=message.video.file_id,
+                caption=message.caption,
+                parse_mode="HTML"
+            )
+            success = True
+            log.info(f"✅ Видео отправлено")
+
+        elif message.sticker:
+            # Стикер
+            log.info(f"📤 Отправляем стикер пользователю {user_id}")
+            await bot.send_sticker(
+                chat_id=user_id,
+                sticker=message.sticker.file_id
+            )
+            success = True
+            log.info(f"✅ Стикер отправлен")
+
+        elif message.voice:
+            # Голосовое
+            log.info(f"📤 Отправляем голосовое пользователю {user_id}")
+            await bot.send_voice(
+                chat_id=user_id,
+                voice=message.voice.file_id,
+                caption=message.caption
+            )
+            success = True
+            log.info(f"✅ Голосовое отправлено")
+
+        elif message.audio:
+            # Аудио
+            log.info(f"📤 Отправляем аудио пользователю {user_id}")
+            await bot.send_audio(
+                chat_id=user_id,
+                audio=message.audio.file_id,
+                caption=message.caption
+            )
+            success = True
+            log.info(f"✅ Аудио отправлено")
+
+        else:
+            error_message = f"Тип сообщения '{message.content_type}' не поддерживается"
+            log.warning(f"⚠️ {error_message}")
+
+    except TelegramForbiddenError:
+        error_message = "Пользователь не начал диалог с ботом или заблокировал бота"
+        log.error(f"❌ {error_message} для пользователя {user_id}")
+    except TelegramBadRequest as e:
+        error_message = f"Ошибка Telegram: {e}"
+        log.error(f"❌ {error_message}")
+    except Exception as e:
+        error_message = f"Неизвестная ошибка: {e}"
+        log.error(f"❌ {error_message}")
+
+    # Обработка результата
     if success:
-        log.info(f"✅ Сообщение доставлено пользователю {user_id}")
+        log.info(f"✅ Сообщение успешно доставлено пользователю {user_id}")
         
+        # Меняем цвет топика на зелёный
         try:
             await bot.edit_forum_topic(
                 chat_id=chat_id,
                 message_thread_id=topic_id,
-                icon_color=0x00FF00
+                icon_color=0x00FF00  # Зелёный
             )
             log.info(f"🎨 Цвет топика {topic_id} изменён на зелёный")
         except Exception as e:
-            log.warning(f"⚠️ Не удалось изменить цвет топика {topic_id}: {e}")
+            log.warning(f"⚠️ Не удалось изменить цвет топика: {e}")
+        
+        # Не отправляем подтверждение оператору, чтобы не засорять чат
+        
     else:
         log.error(f"❌ Не удалось доставить сообщение пользователю {user_id}")
-        await message.reply(
-            "❌ **Не удалось доставить сообщение пользователю.**\n\n"
-            "💡 **Возможные причины:**\n"
-            "• Пользователь не начал диалог с ботом\n"
-            "• Пользователь заблокировал бота\n\n"
-            "🔧 **Решение:** Попросите пользователя написать любое сообщение боту."
+        
+        # Подробное сообщение об ошибке для оператора
+        help_message = (
+            f"❌ **Не удалось доставить сообщение пользователю.**\n\n"
+            f"📋 **Тип вашего сообщения:** `{message.content_type}`\n"
+            f"❌ **Ошибка:** {error_message}\n\n"
+            f"💡 **Как правильно отвечать:**\n"
+            f"1. Найдите **сообщение пользователя** в этом топике\n"
+            f"2. **Нажмите на него** и выберите «Ответить»\n"
+            f"3. Напишите ваш ответ и отправьте\n\n"
+            f"⚠️ **Не отвечайте на системные сообщения** о создании топика!\n\n"
+            f"📌 Поддерживаются: текст, фото, видео, документы, стикеры, голосовые, аудио"
         )
+        await message.reply(help_message)
 
 
 @router.message(F.message_thread_id, F.text.lower() == "/close")
 async def close_ticket_command(message: Message, bot: Bot):
-    """Закрытие тикета по команде /close"""
+    """
+    Закрытие тикета по команде /close
+    """
     topic_id = message.message_thread_id
     chat_id = message.chat.id
     operator_id = message.from_user.id
     
     log.info(f"🔒 Оператор {operator_id} закрывает тикет {topic_id}")
     
+    # Получаем user_id для уведомления
     user_id = await get_user_id_from_file(topic_id)
     
     try:
+        # Закрываем топик
         await bot.close_forum_topic(
             chat_id=chat_id,
             message_thread_id=topic_id
         )
-        await message.answer("✅ **Тикет закрыт.**")
+        await message.answer("✅ **Тикет закрыт.**\n\nОператоры больше не будут видеть этот топик как активный.")
         log.info(f"✅ Топик {topic_id} закрыт")
         
+        # Уведомляем пользователя
         if user_id:
-            await send_message_to_user(
-                bot, user_id,
-                "✅ **Ваш тикет закрыт.**\n\nСпасибо, что обратились к нам!"
-            )
+            try:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text="✅ **Ваш тикет закрыт.**\n\nСпасибо, что обратились к нам!\nЕсли у вас остались вопросы, создайте новую заявку через /start."
+                )
+                log.info(f"✅ Пользователь {user_id} уведомлён о закрытии тикета")
+            except Exception as e:
+                log.warning(f"⚠️ Не удалось уведомить пользователя {user_id}: {e}")
             
     except Exception as e:
         log.error(f"❌ Ошибка при закрытии топика {topic_id}: {e}")
-        await message.answer("❌ **Не удалось закрыть тикет.**")
+        await message.answer("❌ **Не удалось закрыть тикет.** Попробуйте позже.")
 
 
 @router.message(F.chat.type == "supergroup", F.text.lower() == "/help")
 async def operator_help(message: Message):
-    """Справка для операторов"""
+    """
+    Справка для операторов
+    """
     help_text = (
         "🤖 **Справка для операторов**\n\n"
         "📌 **Основные команды:**\n"
         "• `/close` - закрыть текущий тикет\n"
         "• `/help` - показать эту справку\n\n"
         "📌 **Как отвечать пользователям:**\n"
-        "• Просто напишите сообщение в топике\n\n"
+        "• Найдите **сообщение пользователя** в топике\n"
+        "• **Нажмите на него** и выберите «Ответить»\n"
+        "• Напишите ваш ответ\n\n"
+        "📌 **Поддерживаемые типы сообщений:**\n"
+        "• Текстовые сообщения\n"
+        "• Фото\n"
+        "• Видео\n"
+        "• Документы\n"
+        "• Стикеры\n"
+        "• Голосовые сообщения\n"
+        "• Аудио\n\n"
         "📌 **Цвета топиков:**\n"
-        "• 🔴 Красный - новый тикет\n"
-        "• 🟢 Зелёный - оператор ответил"
+        "• 🔴 Красный - новый тикет, ожидает ответа оператора\n"
+        "• 🟢 Зелёный - оператор ответил пользователю\n\n"
+        "📌 **Важно:**\n"
+        "• Отвечайте ТОЛЬКО на сообщения пользователя\n"
+        "• Не отвечайте на системные сообщения о создании топика\n"
+        "• Если пользователь не получает ответ - попросите его написать любое сообщение боту"
     )
     await message.answer(help_text, parse_mode="HTML")
