@@ -4,7 +4,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram import Bot
-import aiofiles
 import os
 
 router = Router()
@@ -262,6 +261,8 @@ async def get_other_question(message: Message, state: FSMContext, bot: Bot):
     await create_other_ticket(message, state, bot)
 
 
+# ========== ОСНОВНАЯ ФУНКЦИЯ СОЗДАНИЯ ТИКЕТА ==========
+
 async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str):
     data = await state.get_data()
     user_name = data.get('user_name', 'Неизвестный')
@@ -281,6 +282,7 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
     )
     
     try:
+        # Создаём топик
         topic = await bot.create_forum_topic(
             chat_id=OPERATOR_GROUP_ID,
             name=topic_name,
@@ -288,12 +290,23 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
         )
         topic_id = topic.message_thread_id
         
-        os.makedirs('/app/data', exist_ok=True)
-        async with aiofiles.open('/app/data/topic_links.txt', 'a') as f:
-            await f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
+        # ========== СОХРАНЯЕМ СВЯЗЬ ==========
+        try:
+            # Создаём папку если её нет
+            os.makedirs('/app/data', exist_ok=True)
+            
+            # Записываем связь в файл
+            with open('/app/data/topic_links.txt', 'a') as f:
+                f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
+            
+            await message.answer(f"✅ Связь сохранена! (топик {topic_id} → пользователь {message.from_user.id})")
+            print(f"✅ Связь сохранена: {topic_id} -> {message.from_user.id}")
+        except Exception as e:
+            await message.answer(f"⚠️ Ошибка сохранения связи: {e}")
+            print(f"Ошибка сохранения: {e}")
+        # ================================
         
-        await message.answer(f"✅ Связь сохранена! (топик {topic_id})")
-        
+        # Отправляем сообщение в топик
         ticket_text = (
             f"🆕 **НОВАЯ ЗАЯВКА**\n\n"
             f"👤 **Пользователь:** {user_name}\n"
@@ -346,9 +359,10 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
         topic = await bot.create_forum_topic(chat_id=OPERATOR_GROUP_ID, name=topic_name, icon_color=0xFF0000)
         topic_id = topic.message_thread_id
         
+        # Сохраняем связь
         os.makedirs('/app/data', exist_ok=True)
-        async with aiofiles.open('/app/data/topic_links.txt', 'a') as f:
-            await f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
+        with open('/app/data/topic_links.txt', 'a') as f:
+            f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
         
         ticket_text = (
             f"🆕 **НОВАЯ ЗАЯВКА (АТРИБУТЫ)**\n\n"
@@ -389,9 +403,10 @@ async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
         topic = await bot.create_forum_topic(chat_id=OPERATOR_GROUP_ID, name=topic_name, icon_color=0xFF0000)
         topic_id = topic.message_thread_id
         
+        # Сохраняем связь
         os.makedirs('/app/data', exist_ok=True)
-        async with aiofiles.open('/app/data/topic_links.txt', 'a') as f:
-            await f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
+        with open('/app/data/topic_links.txt', 'a') as f:
+            f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
         
         ticket_text = (
             f"🆕 **ВОПРОС ПОЛЬЗОВАТЕЛЯ**\n\n"
