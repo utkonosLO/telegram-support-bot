@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram import Bot
 
 router = Router()
@@ -14,12 +14,14 @@ class TicketForm(StatesGroup):
     waiting_for_photo_action = State()
     waiting_for_sku = State()
     waiting_for_comment = State()
-    waiting_for_photo_upload = State()  # НОВОЕ СОСТОЯНИЕ: ожидание загрузки фото
+    waiting_for_photo_upload = State()
     waiting_for_other_reason = State()
     waiting_for_attributes_sku = State()
     waiting_for_attributes_comment = State()
 
-# Клавиатуры
+
+# ========== КЛАВИАТУРЫ ==========
+
 def get_main_menu_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -30,6 +32,7 @@ def get_main_menu_keyboard():
         ],
         resize_keyboard=True
     )
+
 
 def get_photo_menu_keyboard():
     return ReplyKeyboardMarkup(
@@ -42,14 +45,15 @@ def get_photo_menu_keyboard():
         resize_keyboard=True
     )
 
+
 def get_back_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="◀️ Назад")]],
         resize_keyboard=True
     )
 
+
 def get_photo_upload_keyboard():
-    """Клавиатура для выбора: загрузить фото или пропустить"""
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📷 Загрузить фото")],
@@ -58,13 +62,16 @@ def get_photo_upload_keyboard():
         resize_keyboard=True
     )
 
+
 def get_main_menu_button():
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="🏠 На главную")]],
         resize_keyboard=True
     )
 
-# Старт бота
+
+# ========== СТАРТ ==========
+
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
@@ -86,7 +93,7 @@ async def cmd_start(message: Message, state: FSMContext):
         reply_markup=kb
     )
 
-# После ОК - просим представиться
+
 @router.message(TicketForm.waiting_for_name, F.text == "✅ ОК")
 async def ask_name(message: Message, state: FSMContext):
     await state.set_state(TicketForm.waiting_for_name)
@@ -97,7 +104,7 @@ async def ask_name(message: Message, state: FSMContext):
         reply_markup=ReplyKeyboardRemove()
     )
 
-# Сохраняем имя и показываем главное меню
+
 @router.message(TicketForm.waiting_for_name, F.text)
 async def save_name(message: Message, state: FSMContext):
     await state.update_data(user_name=message.text)
@@ -110,7 +117,9 @@ async def save_name(message: Message, state: FSMContext):
         reply_markup=get_main_menu_keyboard()
     )
 
-# Главное меню: Некорректное фото
+
+# ========== ГЛАВНОЕ МЕНЮ ==========
+
 @router.message(TicketForm.waiting_for_question_type, F.text == "📸 Некорректное фото")
 async def photo_question(message: Message, state: FSMContext):
     await state.set_state(TicketForm.waiting_for_photo_action)
@@ -120,7 +129,7 @@ async def photo_question(message: Message, state: FSMContext):
         reply_markup=get_photo_menu_keyboard()
     )
 
-# Главное меню: Некорректные атрибуты
+
 @router.message(TicketForm.waiting_for_question_type, F.text == "✍️ Некорректные атрибуты")
 async def attributes_question(message: Message, state: FSMContext):
     await state.set_state(TicketForm.waiting_for_attributes_sku)
@@ -130,7 +139,7 @@ async def attributes_question(message: Message, state: FSMContext):
         reply_markup=get_back_keyboard()
     )
 
-# Главное меню: Нет фото
+
 @router.message(TicketForm.waiting_for_question_type, F.text == "❌ Нет фото")
 async def no_photo(message: Message, state: FSMContext):
     await state.clear()
@@ -144,7 +153,7 @@ async def no_photo(message: Message, state: FSMContext):
         reply_markup=ReplyKeyboardRemove()
     )
 
-# Главное меню: Задать вопрос
+
 @router.message(TicketForm.waiting_for_question_type, F.text == "❓ Задать вопрос")
 async def ask_question(message: Message, state: FSMContext):
     await state.set_state(TicketForm.waiting_for_other_reason)
@@ -155,7 +164,9 @@ async def ask_question(message: Message, state: FSMContext):
         reply_markup=get_back_keyboard()
     )
 
-# Фото меню: Сменить фото
+
+# ========== ФОТО МЕНЮ ==========
+
 @router.message(TicketForm.waiting_for_photo_action, F.text == "🔄 Нужно сменить фото")
 async def change_photo(message: Message, state: FSMContext):
     await state.update_data(photo_action="сменить фото", question_type="photo")
@@ -165,7 +176,7 @@ async def change_photo(message: Message, state: FSMContext):
         reply_markup=get_back_keyboard()
     )
 
-# Фото меню: Удалить фото
+
 @router.message(TicketForm.waiting_for_photo_action, F.text == "🗑️ Нужно удалить фото")
 async def delete_photo(message: Message, state: FSMContext):
     await state.update_data(photo_action="удалить фото", question_type="photo")
@@ -175,7 +186,7 @@ async def delete_photo(message: Message, state: FSMContext):
         reply_markup=get_back_keyboard()
     )
 
-# Фото меню: Другое
+
 @router.message(TicketForm.waiting_for_photo_action, F.text == "❓ Другое")
 async def photo_other(message: Message, state: FSMContext):
     await state.update_data(photo_action="другое", question_type="photo")
@@ -185,7 +196,7 @@ async def photo_other(message: Message, state: FSMContext):
         reply_markup=get_back_keyboard()
     )
 
-# Фото меню: Назад
+
 @router.message(TicketForm.waiting_for_photo_action, F.text == "◀️ Назад")
 async def photo_back(message: Message, state: FSMContext):
     await state.set_state(TicketForm.waiting_for_question_type)
@@ -194,7 +205,9 @@ async def photo_back(message: Message, state: FSMContext):
         reply_markup=get_main_menu_keyboard()
     )
 
-# Получаем SKU для фото
+
+# ========== SKU И КОММЕНТАРИЙ ==========
+
 @router.message(TicketForm.waiting_for_sku, F.text)
 async def get_photo_sku(message: Message, state: FSMContext):
     if message.text == "◀️ Назад":
@@ -214,7 +227,7 @@ async def get_photo_sku(message: Message, state: FSMContext):
         reply_markup=get_back_keyboard()
     )
 
-# Получаем комментарий для фото и запрашиваем загрузку нового фото
+
 @router.message(TicketForm.waiting_for_comment, F.text)
 async def get_photo_comment(message: Message, state: FSMContext):
     if message.text == "◀️ Назад":
@@ -237,11 +250,12 @@ async def get_photo_comment(message: Message, state: FSMContext):
         reply_markup=get_photo_upload_keyboard()
     )
 
-# Обработчик загрузки фото
+
+# ========== ЗАГРУЗКА ФОТО ==========
+
 @router.message(TicketForm.waiting_for_photo_upload, F.photo)
 async def handle_photo_upload(message: Message, state: FSMContext, bot: Bot):
-    """Пользователь загрузил корректное фото"""
-    photo = message.photo[-1]  # Берём фото в лучшем качестве
+    photo = message.photo[-1]
     await state.update_data(has_photo=True, photo_file_id=photo.file_id)
     
     await message.answer(
@@ -250,13 +264,11 @@ async def handle_photo_upload(message: Message, state: FSMContext, bot: Bot):
         reply_markup=ReplyKeyboardRemove()
     )
     
-    # Продолжаем создание заявки
     await create_ticket(message, state, bot, "📸")
 
-# Обработчик "Нет возможности"
+
 @router.message(TicketForm.waiting_for_photo_upload, F.text == "❌ Нет возможности")
 async def no_photo_upload(message: Message, state: FSMContext, bot: Bot):
-    """Пользователь не может загрузить фото"""
     await state.update_data(has_photo=False)
     
     await message.answer(
@@ -266,19 +278,19 @@ async def no_photo_upload(message: Message, state: FSMContext, bot: Bot):
         reply_markup=ReplyKeyboardRemove()
     )
     
-    # Продолжаем создание заявки
     await create_ticket(message, state, bot, "📸")
 
-# Если пользователь ввел что-то другое вместо фото или кнопки
+
 @router.message(TicketForm.waiting_for_photo_upload, F.text)
 async def invalid_photo_response(message: Message, state: FSMContext):
-    """Обработка некорректного ответа"""
     await message.answer(
         "❓ Пожалуйста, отправьте **фото** или нажмите кнопку **«❌ Нет возможности»**.",
         reply_markup=get_photo_upload_keyboard()
     )
 
-# Получаем SKU для атрибутов
+
+# ========== АТРИБУТЫ ==========
+
 @router.message(TicketForm.waiting_for_attributes_sku, F.text)
 async def get_attributes_sku(message: Message, state: FSMContext):
     if message.text == "◀️ Назад":
@@ -298,7 +310,7 @@ async def get_attributes_sku(message: Message, state: FSMContext):
         reply_markup=get_back_keyboard()
     )
 
-# Получаем комментарий для атрибутов
+
 @router.message(TicketForm.waiting_for_attributes_comment, F.text)
 async def get_attributes_comment(message: Message, state: FSMContext, bot: Bot):
     if message.text == "◀️ Назад":
@@ -312,7 +324,9 @@ async def get_attributes_comment(message: Message, state: FSMContext, bot: Bot):
     await state.update_data(comment=message.text)
     await create_attributes_ticket(message, state, bot)
 
-# Получаем другой вопрос
+
+# ========== ДРУГОЙ ВОПРОС ==========
+
 @router.message(TicketForm.waiting_for_other_reason, F.text)
 async def get_other_question(message: Message, state: FSMContext, bot: Bot):
     if message.text == "◀️ Назад":
@@ -327,12 +341,10 @@ async def get_other_question(message: Message, state: FSMContext, bot: Bot):
     await create_other_ticket(message, state, bot)
 
 
-# ============================================================
-# ФУНКЦИИ СОЗДАНИЯ ТИКЕТОВ
-# ============================================================
+# ========== ФУНКЦИИ СОЗДАНИЯ ТИКЕТОВ ==========
 
 async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str):
-    """Создание топика для фото"""
+    """Создание тикета для фото"""
     data = await state.get_data()
     user_name = data.get('user_name', 'Неизвестный')
     sku = data.get('sku', 'Не указан')
@@ -351,6 +363,7 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
     )
     
     try:
+        # Создаём топик
         topic = await bot.create_forum_topic(
             chat_id=OPERATOR_GROUP_ID,
             name=topic_name,
@@ -358,6 +371,32 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
         )
         topic_id = topic.message_thread_id
         
+        # ========== СОХРАНЯЕМ СВЯЗЬ В БАЗУ ДАННЫХ ==========
+        db = message.bot.data.get("db") if hasattr(message.bot, 'data') else None
+        if db:
+            try:
+                # Создаём таблицу, если её нет
+                await db.execute('''
+                    CREATE TABLE IF NOT EXISTS topic_links (
+                        topic_id INTEGER PRIMARY KEY,
+                        chat_id INTEGER,
+                        user_id INTEGER
+                    )
+                ''')
+                # Сохраняем связь
+                await db.execute(
+                    "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
+                    (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
+                )
+                await db.commit()
+                print(f"✅ Сохранена связь: топик {topic_id} -> пользователь {message.from_user.id}")
+            except Exception as e:
+                print(f"⚠️ Ошибка сохранения связи: {e}")
+        else:
+            print("⚠️ БД не найдена, связь не сохранена!")
+        # ================================================
+        
+        # Формируем сообщение в топик
         ticket_text = (
             f"🆕 **НОВАЯ ЗАЯВКА**\n\n"
             f"👤 **Пользователь:** {user_name}\n"
@@ -381,7 +420,7 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
             message_thread_id=topic_id
         )
         
-        # Если есть фото — отправляем его в топик отдельным сообщением
+        # Отправляем фото, если есть
         if has_photo and photo_file_id:
             await bot.send_photo(
                 chat_id=OPERATOR_GROUP_ID,
@@ -390,11 +429,12 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
                 message_thread_id=topic_id
             )
         
+        # Подтверждение пользователю
         await message.answer(
-            "✅ **Заявка успешно создана!**\n\n"
-            "Наши операторы скоро свяжутся с вами в этом чате.\n"
-            "📌 Номер вашего тикета: `{}`\n\n"
-            "👇 Нажмите **«На главную»**, чтобы создать новую заявку.".format(topic_id),
+            f"✅ **Заявка успешно создана!**\n\n"
+            f"Наши операторы скоро свяжутся с вами в этом чате.\n"
+            f"📌 Номер вашего тикета: `{topic_id}`\n\n"
+            f"👇 Нажмите **«На главную»**, чтобы создать новую заявку.",
             reply_markup=main_menu_kb
         )
         
@@ -410,7 +450,7 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
 
 
 async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot):
-    """Создание топика для атрибутов"""
+    """Создание тикета для атрибутов"""
     data = await state.get_data()
     user_name = data.get('user_name', 'Неизвестный')
     sku = data.get('sku', 'Не указан')
@@ -433,6 +473,29 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
         )
         topic_id = topic.message_thread_id
         
+        # ========== СОХРАНЯЕМ СВЯЗЬ В БАЗУ ДАННЫХ ==========
+        db = message.bot.data.get("db") if hasattr(message.bot, 'data') else None
+        if db:
+            try:
+                await db.execute('''
+                    CREATE TABLE IF NOT EXISTS topic_links (
+                        topic_id INTEGER PRIMARY KEY,
+                        chat_id INTEGER,
+                        user_id INTEGER
+                    )
+                ''')
+                await db.execute(
+                    "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
+                    (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
+                )
+                await db.commit()
+                print(f"✅ Сохранена связь: топик {topic_id} -> пользователь {message.from_user.id}")
+            except Exception as e:
+                print(f"⚠️ Ошибка сохранения связи: {e}")
+        else:
+            print("⚠️ БД не найдена, связь не сохранена!")
+        # ================================================
+        
         ticket_text = (
             f"🆕 **НОВАЯ ЗАЯВКА (АТРИБУТЫ)**\n\n"
             f"👤 **Пользователь:** {user_name}\n"
@@ -448,10 +511,10 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
         )
         
         await message.answer(
-            "✅ **Заявка успешно создана!**\n\n"
-            "Наши операторы скоро свяжутся с вами в этом чате.\n"
-            "📌 Номер вашего тикета: `{}`\n\n"
-            "👇 Нажмите **«На главную»**, чтобы создать новую заявку.".format(topic_id),
+            f"✅ **Заявка успешно создана!**\n\n"
+            f"Наши операторы скоро свяжутся с вами в этом чате.\n"
+            f"📌 Номер вашего тикета: `{topic_id}`\n\n"
+            f"👇 Нажмите **«На главную»**, чтобы создать новую заявку.",
             reply_markup=main_menu_kb
         )
         
@@ -467,7 +530,7 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
 
 
 async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
-    """Создание топика для вопроса"""
+    """Создание тикета для вопроса"""
     data = await state.get_data()
     user_name = data.get('user_name', 'Неизвестный')
     question = data.get('question', 'Не указан')
@@ -489,6 +552,29 @@ async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
         )
         topic_id = topic.message_thread_id
         
+        # ========== СОХРАНЯЕМ СВЯЗЬ В БАЗУ ДАННЫХ ==========
+        db = message.bot.data.get("db") if hasattr(message.bot, 'data') else None
+        if db:
+            try:
+                await db.execute('''
+                    CREATE TABLE IF NOT EXISTS topic_links (
+                        topic_id INTEGER PRIMARY KEY,
+                        chat_id INTEGER,
+                        user_id INTEGER
+                    )
+                ''')
+                await db.execute(
+                    "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
+                    (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
+                )
+                await db.commit()
+                print(f"✅ Сохранена связь: топик {topic_id} -> пользователь {message.from_user.id}")
+            except Exception as e:
+                print(f"⚠️ Ошибка сохранения связи: {e}")
+        else:
+            print("⚠️ БД не найдена, связь не сохранена!")
+        # ================================================
+        
         ticket_text = (
             f"🆕 **ВОПРОС ПОЛЬЗОВАТЕЛЯ**\n\n"
             f"👤 **Пользователь:** {user_name}\n"
@@ -503,10 +589,10 @@ async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
         )
         
         await message.answer(
-            "✅ **Ваш вопрос передан в наш отдел!**\n\n"
-            "Ответ придёт вам в этот чат в ближайшее время.\n"
-            "📌 Номер вашей заявки: `{}`\n\n"
-            "👇 Нажмите **«На главную»**, чтобы создать новую заявку.".format(topic_id),
+            f"✅ **Ваш вопрос передан в наш отдел!**\n\n"
+            f"Ответ придёт вам в этот чат в ближайшее время.\n"
+            f"📌 Номер вашей заявки: `{topic_id}`\n\n"
+            f"👇 Нажмите **«На главную»**, чтобы создать новую заявку.",
             reply_markup=main_menu_kb
         )
         
@@ -521,9 +607,7 @@ async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
         print(f"Ошибка создания топика: {e}")
 
 
-# ============================================================
-# ОБРАБОТЧИК КНОПКИ "НА ГЛАВНУЮ"
-# ============================================================
+# ========== НА ГЛАВНУЮ ==========
 
 @router.message(F.text == "🏠 На главную")
 async def go_to_main_menu(message: Message, state: FSMContext):
