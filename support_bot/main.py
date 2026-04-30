@@ -13,7 +13,7 @@ from support_bot.config import load_config
 from support_bot.db import Database
 from support_bot.handlers.operator import router as operator_router
 from support_bot.handlers.user import router as user_router
-from support_bot.handlers.ticket_form import router as ticket_form_router  # 👈 ДОБАВИТЬ ЭТУ СТРОКУ
+from support_bot.handlers.ticket_form import router as ticket_form_router
 from support_bot.topic_manager import TopicManager
 
 
@@ -43,9 +43,8 @@ async def _run() -> None:
         dp["topics"] = topics
         dp["log_messages"] = config.log_messages
 
-        # 👇 ПОДКЛЮЧАЕМ НОВЫЙ РОУТЕР (можно до или после user_router)
-        dp.include_router(ticket_form_router)  # 👈 ДОБАВИТЬ ЭТУ СТРОКУ
-
+        # Подключаем роутеры
+        dp.include_router(ticket_form_router)
         dp.include_router(user_router)
 
         operator_router.message.filter(F.chat.id == config.operator_group_id)
@@ -53,15 +52,18 @@ async def _run() -> None:
 
         me = await bot.get_me()
         log.info("Started as @%s (id=%s)", me.username, me.id)
-      await dp.start_polling(
-    bot,
-    allowed_updates=[
-        "message",
-        "callback_query",
-        "my_chat_member",
-        "chat_member",
-    ]
-)
+
+        # Запускаем polling с правильными allowed_updates
+        await dp.start_polling(
+            bot,
+            allowed_updates=[
+                "message",
+                "callback_query",
+                "my_chat_member",
+                "chat_member",
+            ]
+        )
+
     finally:
         if db is not None:
             await db.close()
