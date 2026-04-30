@@ -1,0 +1,13 @@
+services:
+  - type: worker
+    name: telegram-support-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m support_bot
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: BOT_TOKEN
+        sync: false
+      - key: OPERATOR_GROUP_ID
+        sync: false
