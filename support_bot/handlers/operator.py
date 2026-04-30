@@ -2,23 +2,13 @@ import logging
 from typing import Optional
 
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from support_bot.db import Database
-from support_bot.topic_manager import TopicManager
 
 router = Router()
 log = logging.getLogger(__name__)
-
-
-def get_close_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура для закрытия тикета"""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Закрыть тикет", callback_data="close_ticket")]
-        ]
-    )
 
 
 async def send_message_to_user(bot: Bot, user_id: int, text: str, parse_mode: str = "HTML") -> bool:
@@ -99,44 +89,47 @@ async def send_media_to_user(bot: Bot, user_id: int, message: Message) -> bool:
         return False
 
 
+async def get_user_id_by_topic(db: Database, chat_id: int, topic_id: int) -> Optional[int]:
+    """Получает user_id из таблицы topic_links по topic_id и chat_id"""
+    try:
+        result = await db.fetchone(
+            "SELECT user_id FROM topic_links WHERE topic_id = ? AND chat_id = ?",
+            (topic_id, chat_id)
+        )
+        if result:
+            return result["user_id"]
+        else:
+            log.warning(f"Не найден пользователь для топика {topic_id} в чате {chat_id}")
+            return None
+    except Exception as e:
+        log.error(f"Ошибка при поиске пользователя по топику: {e}")
+        return None
+
+
 @router.message(F.message_thread_id, F.chat.type == "supergroup")
 async def operator_reply_handler(
     message: Message,
     bot: Bot,
     db: Database,
-    topics: TopicManager,
     log_messages: bool = True
 ):
-    """Обработчик ответов оператора в топике"""
+    """
+    Обработчик ответов оператора в топике.
+    Пересылает сообщение пользователю, чей тикет открыт в этом топике.
+    """
     topic_id = message.message_thread_id
     chat_id = message.chat.id
 
-    log.info(f"Получено сообщение в топике {topic_id} от {message.from_user.id}: {message.text}")
+    log.info(f"🔍 Получено сообщение в топике {topic_id} от оператора {message.from_user.id}")
+
+    # Проверяем, что БД доступна
+    if not db:
+        log.error("База данных не доступна!")
+        await message.reply("❌ Ошибка: база данных не доступна. Обратитесь к администратору.")
+        return
 
     # Ищем пользователя по топику
-    user_id = None
-
-    # Пробуем через TopicManager
-    if hasattr(topics, 'get_user_id_by_topic'):
-        try:
-            user_id = await topics.get_user_id_by_topic(chat_id, topic_id)
-        except Exception as e:
-            log.error(f"Ошибка topics.get_user_id_by_topic: {e}")
-
-    # Если не нашли — ищем напрямую в БД
-    if not user_id and db:
-        try:
-            result = await db.fetchone(
-                "SELECT user_id FROM topic_links WHERE topic_id = ? AND chat_id = ?",
-                (topic_id, chat_id)
-            )
-            if result:
-                user_id = result["user_id"]
-                log.info(f"Найден пользователь {user_id} для топика {topic_id}")
-            else:
-                log.warning(f"Не найден пользователь для топика {topic_id}")
-        except Exception as e:
-            log.error(f"Ошибка поиска в БД: {e}")
+    user_id = await get_user_id_by_topic(db, chat_id, topic_id)
 
     if not user_id:
         await message.reply(
@@ -144,19 +137,25 @@ async def operator_reply_handler(
             "Возможные причины:\n"
             "• Пользователь ещё не написал боту ни одного сообщения\n"
             "• Связь между топиком и пользователем не сохранена\n\n"
-            "💡 Попросите пользователя написать любое сообщение боту, "
-            "а затем попробуйте ответить снова."
+            "💡 **Решение:** Попросите пользователя написать любое сообщение боту, "
+            "а затем попробуйте ответить снова.\n\n"
+            "📌 Если проблема повторяется, создайте новую заявку через /start."
         )
         return
 
-    # Логируем сообщение
-    if log_messages:
-        await db.save_message(
-            user_id=user_id,
-            operator_id=message.from_user.id,
-            message_text=message.text or message.caption or "[Медиа]",
-            direction="operator_to_user"
-        )
+    log.info(f"✅ Найден пользователь {user_id} для топика {topic_id}")
+
+    # Логируем сообщение, если включено
+    if log_messages and hasattr(db, 'save_message'):
+        try:
+            await db.save_message(
+                user_id=user_id,
+                operator_id=message.from_user.id,
+                message_text=message.text or message.caption or "[Медиа]",
+                direction="operator_to_user"
+            )
+        except Exception as e:
+            log.error(f"Ошибка при сохранении сообщения в лог: {e}")
 
     # Отправляем сообщение пользователю
     success = False
@@ -166,7 +165,7 @@ async def operator_reply_handler(
     elif message.photo or message.video or message.document or message.animation or message.sticker or message.voice or message.audio:
         success = await send_media_to_user(bot, user_id, message)
     else:
-        await message.reply("⚠️ Этот тип сообщений пока не поддерживается.")
+        await message.reply("⚠️ Этот тип сообщений пока не поддерживается для отправки пользователю.")
         return
 
     if not success:
@@ -174,48 +173,88 @@ async def operator_reply_handler(
             "⚠️ **Не удалось доставить сообщение пользователю.**\n\n"
             "Возможные причины:\n"
             "• Пользователь не начинал диалог с ботом\n"
-            "• Пользователь заблокировал бота\n\n"
-            "💡 Попросите пользователя написать любое сообщение боту."
+            "• Пользователь заблокировал бота\n"
+            "• У пользователя закрыт чат с ботом\n\n"
+            "💡 **Рекомендация:** Попросите пользователя написать боту любое сообщение, чтобы активировать диалог."
         )
     else:
-        # Меняем цвет топика на зелёный
+        # Меняем цвет топика на зелёный после успешного ответа
         try:
             await bot.edit_forum_topic(
                 chat_id=chat_id,
                 message_thread_id=topic_id,
-                icon_color=0x00FF00
+                icon_color=0x00FF00  # Зелёный
             )
+            log.info(f"✅ Цвет топика {topic_id} изменён на зелёный")
         except Exception as e:
-            log.warning(f"Не удалось изменить цвет топика: {e}")
+            log.warning(f"Не удалось изменить цвет топика {topic_id}: {e}")
 
-        await message.reply("✅ Сообщение доставлено пользователю.")
+        # Отправляем подтверждение оператору (опционально, можно убрать)
+        # await message.reply("✅ Сообщение доставлено пользователю.")
 
 
 @router.message(F.message_thread_id, F.text.lower() == "/close")
-async def close_ticket_command(message: Message, bot: Bot, db: Database, topics: TopicManager):
-    """Закрытие тикета по команде /close"""
+async def close_ticket_command(message: Message, bot: Bot, db: Database):
+    """
+    Закрытие тикета по команде /close в топике
+    """
     topic_id = message.message_thread_id
     chat_id = message.chat.id
 
-    user_id = None
-    if db:
-        result = await db.fetchone(
-            "SELECT user_id FROM topic_links WHERE topic_id = ? AND chat_id = ?",
-            (topic_id, chat_id)
-        )
-        if result:
-            user_id = result["user_id"]
+    log.info(f"🔒 Закрытие тикета {topic_id} оператором {message.from_user.id}")
+
+    if not db:
+        await message.reply("❌ Ошибка: база данных не доступна.")
+        return
+
+    # Получаем user_id для уведомления пользователя
+    user_id = await get_user_id_by_topic(db, chat_id, topic_id)
 
     try:
-        await bot.close_forum_topic(chat_id=chat_id, message_thread_id=topic_id)
-        await message.answer("✅ Тикет закрыт.")
+        # Закрываем топик
+        await bot.close_forum_topic(
+            chat_id=chat_id,
+            message_thread_id=topic_id
+        )
+        await message.answer("✅ **Тикет закрыт.**\n\nОператоры больше не будут видеть этот топик как активный.")
 
+        # Уведомляем пользователя, если нашли
         if user_id:
             await send_message_to_user(
                 bot, user_id,
-                "✅ Ваш тикет закрыт.\n"
+                "✅ **Ваш тикет закрыт.**\n\n"
+                "Спасибо, что обратились к нам!\n"
                 "Если у вас остались вопросы, создайте новую заявку через /start."
             )
+            log.info(f"✅ Пользователь {user_id} уведомлён о закрытии тикета {topic_id}")
+        else:
+            log.warning(f"Не удалось уведомить пользователя о закрытии тикета {topic_id}")
+
     except Exception as e:
-        log.error(f"Ошибка при закрытии топика: {e}")
-        await message.answer("❌ Не удалось закрыть тикет.")
+        log.error(f"Ошибка при закрытии топика {topic_id}: {e}")
+        await message.answer("❌ **Не удалось закрыть тикет.** Попробуйте позже.")
+
+
+# ========== ВСПОМОГАТЕЛЬНЫЕ КОМАНДЫ ДЛЯ ОПЕРАТОРОВ ==========
+
+@router.message(F.chat.type == "supergroup", F.text.lower() == "/help")
+async def operator_help(message: Message):
+    """Справка для операторов"""
+    help_text = (
+        "🤖 **Справка для операторов**\n\n"
+        "📌 **Основные команды:**\n"
+        "• `/close` - закрыть текущий тикет\n"
+        "• `/help` - показать эту справку\n\n"
+        "📌 **Как отвечать пользователям:**\n"
+        "• Просто напишите сообщение в топике - оно будет отправлено пользователю\n"
+        "• Поддерживаются текстовые сообщения и медиа (фото, видео, документы)\n\n"
+        "📌 **Цвета топиков:**\n"
+        "• 🔴 Красный - новый тикет, ожидает ответа оператора\n"
+        "• 🟢 Зелёный - оператор ответил пользователю\n\n"
+        "📌 **Если пользователь не получает ответ:**\n"
+        "• Убедитесь, что пользователь написал боту хотя бы одно сообщение\n"
+        "• Попросите пользователя написать любое слово в чат с ботом\n\n"
+        "📌 **Полезные ссылки:**\n"
+        "• [Поддержка](https://t.me/your_support_chat)"
+    )
+    await message.answer(help_text, parse_mode="HTML", disable_web_page_preview=True)
