@@ -53,7 +53,15 @@ async def _run() -> None:
 
         me = await bot.get_me()
         log.info("Started as @%s (id=%s)", me.username, me.id)
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+      await dp.start_polling(
+    bot,
+    allowed_updates=[
+        "message",
+        "callback_query",
+        "my_chat_member",
+        "chat_member",
+    ]
+)
     finally:
         if db is not None:
             await db.close()
