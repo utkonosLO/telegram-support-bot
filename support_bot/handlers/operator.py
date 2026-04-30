@@ -1,3 +1,8 @@
+@router.message(F.message_thread_id, F.chat.type == "supergroup")
+async def operator_reply_handler(message: Message, ...):
+    print(f"🔍 Получено сообщение в топике {message.message_thread_id}: {message.text}")
+    # ... остальной код
+
 import logging
 from typing import Optional, Union
 
