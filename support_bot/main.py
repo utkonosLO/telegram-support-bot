@@ -13,6 +13,7 @@ from support_bot.config import load_config
 from support_bot.db import Database
 from support_bot.handlers.operator import router as operator_router
 from support_bot.handlers.user import router as user_router
+from support_bot.handlers.ticket_form import router as ticket_form_router  # 👈 ДОБАВИТЬ ЭТУ СТРОКУ
 from support_bot.topic_manager import TopicManager
 
 
@@ -41,6 +42,9 @@ async def _run() -> None:
         dp["db"] = db
         dp["topics"] = topics
         dp["log_messages"] = config.log_messages
+
+        # 👇 ПОДКЛЮЧАЕМ НОВЫЙ РОУТЕР (можно до или после user_router)
+        dp.include_router(ticket_form_router)  # 👈 ДОБАВИТЬ ЭТУ СТРОКУ
 
         dp.include_router(user_router)
 
