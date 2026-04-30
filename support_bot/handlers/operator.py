@@ -1,6 +1,5 @@
 import logging
 from typing import Optional
-import aiofiles
 import os
 
 from aiogram import Router, F, Bot
@@ -11,9 +10,9 @@ router = Router()
 log = logging.getLogger(__name__)
 
 
-async def get_user_id_from_file(topic_id: int) -> Optional[int]:
+def get_user_id_from_file(topic_id: int) -> Optional[int]:
     """
-    Получает user_id из файла по topic_id
+    Получает user_id из файла по topic_id (синхронно)
     """
     try:
         file_path = '/app/data/topic_links.txt'
@@ -21,17 +20,15 @@ async def get_user_id_from_file(topic_id: int) -> Optional[int]:
             log.warning(f"Файл {file_path} не существует")
             return None
         
-        async with aiofiles.open(file_path, 'r') as f:
-            lines = await f.readlines()
-            for line in lines:
+        with open(file_path, 'r') as f:
+            for line in f:
                 line = line.strip()
                 if not line:
                     continue
                 parts = line.split(',')
                 if len(parts) >= 3:
                     try:
-                        file_topic_id = int(parts[0])
-                        if file_topic_id == topic_id:
+                        if int(parts[0]) == topic_id:
                             user_id = int(parts[2])
                             log.info(f"✅ Найден user_id {user_id} для топика {topic_id}")
                             return user_id
@@ -53,7 +50,7 @@ async def operator_reply_handler(message: Message, bot: Bot):
     chat_id = message.chat.id
     operator_id = message.from_user.id
 
-    # ========== ИГНОРИРУЕМ СЛУЖЕБНЫЕ СООБЩЕНИЯ ==========
+    # Игнорируем сервисные сообщения
     if message.content_type in [
         "forum_topic_created",
         "forum_topic_closed", 
@@ -66,13 +63,12 @@ async def operator_reply_handler(message: Message, bot: Bot):
     ]:
         log.info(f"⏭️ Игнорируем служебное сообщение (тип: {message.content_type}) в топике {topic_id}")
         return
-    # ===================================================
 
     log.info(f"🔍 Получено сообщение в топике {topic_id} от оператора {operator_id}")
     log.info(f"📋 Тип сообщения: {message.content_type}")
 
     # Ищем пользователя по топику
-    user_id = await get_user_id_from_file(topic_id)
+    user_id = get_user_id_from_file(topic_id)
 
     if not user_id:
         log.error(f"❌ Не найден пользователь для топика {topic_id}")
@@ -189,20 +185,9 @@ async def operator_reply_handler(message: Message, bot: Bot):
     # Обработка результата
     if success:
         log.info(f"✅ Сообщение успешно доставлено пользователю {user_id}")
-        
-        # Меняем цвет топика на зелёный
-        try:
-            await bot.edit_forum_topic(
-                chat_id=chat_id,
-                message_thread_id=topic_id,
-                icon_color=0x00FF00  # Зелёный
-            )
-            log.info(f"🎨 Цвет топика {topic_id} изменён на зелёный")
-        except Exception as e:
-            log.warning(f"⚠️ Не удалось изменить цвет топика: {e}")
-        
-        # Не отправляем подтверждение оператору, чтобы не засорять чат
-        
+        # Изменение цвета топика временно отключено из-за ограничений API
+        # Цвет топика можно менять только у супергрупп с включёнными темами,
+        # но в некоторых версиях API этот параметр не поддерживается
     else:
         log.error(f"❌ Не удалось доставить сообщение пользователю {user_id}")
         
@@ -233,7 +218,7 @@ async def close_ticket_command(message: Message, bot: Bot):
     log.info(f"🔒 Оператор {operator_id} закрывает тикет {topic_id}")
     
     # Получаем user_id для уведомления
-    user_id = await get_user_id_from_file(topic_id)
+    user_id = get_user_id_from_file(topic_id)
     
     try:
         # Закрываем топик
@@ -282,9 +267,6 @@ async def operator_help(message: Message):
         "• Стикеры\n"
         "• Голосовые сообщения\n"
         "• Аудио\n\n"
-        "📌 **Цвета топиков:**\n"
-        "• 🔴 Красный - новый тикет, ожидает ответа оператора\n"
-        "• 🟢 Зелёный - оператор ответил пользователю\n\n"
         "📌 **Важно:**\n"
         "• Отвечайте ТОЛЬКО на сообщения пользователя\n"
         "• Не отвечайте на системные сообщения о создании топика\n"
