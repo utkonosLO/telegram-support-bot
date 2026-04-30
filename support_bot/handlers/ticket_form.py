@@ -4,6 +4,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram import Bot
+import aiofiles
+import os
 
 router = Router()
 
@@ -334,7 +336,7 @@ async def get_other_question(message: Message, state: FSMContext, bot: Bot):
     await create_other_ticket(message, state, bot)
 
 
-# ========== СОЗДАНИЕ ТИКЕТА (ФОТО) С ОТЛАДКОЙ ==========
+# ========== СОЗДАНИЕ ТИКЕТА (ФОТО) С ФАЙЛОВЫМ СОХРАНЕНИЕМ ==========
 
 async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str):
     data = await state.get_data()
@@ -354,10 +356,6 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
         resize_keyboard=True
     )
     
-    # ОТЛАДКА: проверим, есть ли БД в bot.data
-    has_db = hasattr(message.bot, 'data') and 'db' in message.bot.data
-    await message.answer(f"🔍 Отладка: БД в bot.data = {has_db}")
-    
     try:
         # Создаём топик
         topic = await bot.create_forum_topic(
@@ -367,37 +365,17 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
         )
         topic_id = topic.message_thread_id
         
-        # ========== ПРОБУЕМ СОХРАНИТЬ СВЯЗЬ ==========
-        if has_db:
-            db = message.bot.data['db']
-            try:
-                # Пробуем разные методы
-                if hasattr(db, 'execute'):
-                    await db.execute(
-                        "CREATE TABLE IF NOT EXISTS topic_links (topic_id INTEGER PRIMARY KEY, chat_id INTEGER, user_id INTEGER)"
-                    )
-                    await db.execute(
-                        "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
-                        (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
-                    )
-                    if hasattr(db, 'commit'):
-                        await db.commit()
-                    await message.answer(f"✅ Связь сохранена через execute! (топик {topic_id})")
-                elif hasattr(db, 'query'):
-                    await db.query(
-                        "CREATE TABLE IF NOT EXISTS topic_links (topic_id INTEGER PRIMARY KEY, chat_id INTEGER, user_id INTEGER)"
-                    )
-                    await db.query(
-                        "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
-                        (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
-                    )
-                    await message.answer(f"✅ Связь сохранена через query! (топик {topic_id})")
-                else:
-                    await message.answer("⚠️ У БД нет методов execute или query!")
-            except Exception as e:
-                await message.answer(f"⚠️ Ошибка сохранения: {e}")
-        else:
-            await message.answer("⚠️ БД не найдена в bot.data!")
+        # ========== СОХРАНЯЕМ СВЯЗЬ В ФАЙЛ ==========
+        try:
+            # Создаём папку data, если её нет
+            os.makedirs('/app/data', exist_ok=True)
+            
+            # Записываем связь в файл
+            async with aiofiles.open('/app/data/topic_links.txt', 'a') as f:
+                await f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
+            await message.answer(f"✅ Связь сохранена в файл! (топик {topic_id} → пользователь {message.from_user.id})")
+        except Exception as e:
+            await message.answer(f"⚠️ Ошибка сохранения в файл: {e}")
         # ============================================
         
         # Отправляем сообщение в топик
@@ -442,11 +420,11 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
         await state.clear()
         
     except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
+        await message.answer(f"❌ Ошибка при создании заявки: {e}")
         print(f"Ошибка: {e}")
 
 
-# ========== СОЗДАНИЕ ТИКЕТА (АТРИБУТЫ) С ОТЛАДКОЙ ==========
+# ========== СОЗДАНИЕ ТИКЕТА (АТРИБУТЫ) ==========
 
 async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
@@ -463,9 +441,6 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
         resize_keyboard=True
     )
     
-    has_db = hasattr(message.bot, 'data') and 'db' in message.bot.data
-    await message.answer(f"🔍 Отладка: БД в bot.data = {has_db}")
-    
     try:
         topic = await bot.create_forum_topic(
             chat_id=OPERATOR_GROUP_ID,
@@ -474,29 +449,13 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
         )
         topic_id = topic.message_thread_id
         
-        if has_db:
-            db = message.bot.data['db']
-            try:
-                if hasattr(db, 'execute'):
-                    await db.execute(
-                        "CREATE TABLE IF NOT EXISTS topic_links (topic_id INTEGER PRIMARY KEY, chat_id INTEGER, user_id INTEGER)"
-                    )
-                    await db.execute(
-                        "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
-                        (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
-                    )
-                    if hasattr(db, 'commit'):
-                        await db.commit()
-                elif hasattr(db, 'query'):
-                    await db.query(
-                        "CREATE TABLE IF NOT EXISTS topic_links (topic_id INTEGER PRIMARY KEY, chat_id INTEGER, user_id INTEGER)"
-                    )
-                    await db.query(
-                        "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
-                        (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
-                    )
-            except Exception as e:
-                await message.answer(f"⚠️ Ошибка: {e}")
+        # Сохраняем связь в файл
+        try:
+            os.makedirs('/app/data', exist_ok=True)
+            async with aiofiles.open('/app/data/topic_links.txt', 'a') as f:
+                await f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
+        except Exception as e:
+            print(f"Ошибка сохранения: {e}")
         
         ticket_text = (
             f"🆕 **НОВАЯ ЗАЯВКА (АТРИБУТЫ)**\n\n"
@@ -525,7 +484,7 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
         await message.answer(f"❌ Ошибка: {e}")
 
 
-# ========== СОЗДАНИЕ ТИКЕТА (ВОПРОС) С ОТЛАДКОЙ ==========
+# ========== СОЗДАНИЕ ТИКЕТА (ВОПРОС) ==========
 
 async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
@@ -541,9 +500,6 @@ async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
         resize_keyboard=True
     )
     
-    has_db = hasattr(message.bot, 'data') and 'db' in message.bot.data
-    await message.answer(f"🔍 Отладка: БД в bot.data = {has_db}")
-    
     try:
         topic = await bot.create_forum_topic(
             chat_id=OPERATOR_GROUP_ID,
@@ -552,29 +508,13 @@ async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
         )
         topic_id = topic.message_thread_id
         
-        if has_db:
-            db = message.bot.data['db']
-            try:
-                if hasattr(db, 'execute'):
-                    await db.execute(
-                        "CREATE TABLE IF NOT EXISTS topic_links (topic_id INTEGER PRIMARY KEY, chat_id INTEGER, user_id INTEGER)"
-                    )
-                    await db.execute(
-                        "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
-                        (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
-                    )
-                    if hasattr(db, 'commit'):
-                        await db.commit()
-                elif hasattr(db, 'query'):
-                    await db.query(
-                        "CREATE TABLE IF NOT EXISTS topic_links (topic_id INTEGER PRIMARY KEY, chat_id INTEGER, user_id INTEGER)"
-                    )
-                    await db.query(
-                        "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
-                        (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
-                    )
-            except Exception as e:
-                await message.answer(f"⚠️ Ошибка: {e}")
+        # Сохраняем связь в файл
+        try:
+            os.makedirs('/app/data', exist_ok=True)
+            async with aiofiles.open('/app/data/topic_links.txt', 'a') as f:
+                await f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
+        except Exception as e:
+            print(f"Ошибка сохранения: {e}")
         
         ticket_text = (
             f"🆕 **ВОПРОС ПОЛЬЗОВАТЕЛЯ**\n\n"
