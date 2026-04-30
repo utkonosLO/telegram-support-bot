@@ -63,13 +63,6 @@ def get_photo_upload_keyboard():
     )
 
 
-def get_main_menu_button():
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="🏠 На главную")]],
-        resize_keyboard=True
-    )
-
-
 # ========== СТАРТ ==========
 
 @router.message(Command("start"))
@@ -341,10 +334,9 @@ async def get_other_question(message: Message, state: FSMContext, bot: Bot):
     await create_other_ticket(message, state, bot)
 
 
-# ========== ФУНКЦИИ СОЗДАНИЯ ТИКЕТОВ ==========
+# ========== СОЗДАНИЕ ТИКЕТА (ФОТО) ==========
 
 async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str):
-    """Создание тикета для фото"""
     data = await state.get_data()
     user_name = data.get('user_name', 'Неизвестный')
     sku = data.get('sku', 'Не указан')
@@ -371,32 +363,34 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
         )
         topic_id = topic.message_thread_id
         
-        # ========== СОХРАНЯЕМ СВЯЗЬ В БАЗУ ДАННЫХ ==========
+        # ========== СОХРАНЯЕМ СВЯЗЬ ==========
         db = message.bot.data.get("db") if hasattr(message.bot, 'data') else None
         if db:
             try:
-                # Создаём таблицу, если её нет
-                await db.execute('''
-                    CREATE TABLE IF NOT EXISTS topic_links (
-                        topic_id INTEGER PRIMARY KEY,
-                        chat_id INTEGER,
-                        user_id INTEGER
+                # Пробуем execute + commit
+                if hasattr(db, 'execute'):
+                    await db.execute(
+                        "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
+                        (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
                     )
-                ''')
-                # Сохраняем связь
-                await db.execute(
-                    "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
-                    (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
-                )
-                await db.commit()
-                print(f"✅ Сохранена связь: топик {topic_id} -> пользователь {message.from_user.id}")
+                    if hasattr(db, 'commit'):
+                        await db.commit()
+                    await message.answer(f"✅ Связь сохранена! (топик {topic_id} → пользователь {message.from_user.id})")
+                elif hasattr(db, 'query'):
+                    await db.query(
+                        "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
+                        (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
+                    )
+                    await message.answer(f"✅ Связь сохранена! (топик {topic_id})")
+                else:
+                    await message.answer("⚠️ Не удалось сохранить связь: нет метода execute или query")
             except Exception as e:
-                print(f"⚠️ Ошибка сохранения связи: {e}")
+                await message.answer(f"⚠️ Ошибка сохранения связи: {e}")
         else:
-            print("⚠️ БД не найдена, связь не сохранена!")
-        # ================================================
+            await message.answer("⚠️ БД не найдена в bot.data!")
+        # ====================================
         
-        # Формируем сообщение в топик
+        # Отправляем сообщение в топик
         ticket_text = (
             f"🆕 **НОВАЯ ЗАЯВКА**\n\n"
             f"👤 **Пользователь:** {user_name}\n"
@@ -442,15 +436,15 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
         
     except Exception as e:
         await message.answer(
-            "❌ **Ошибка при создании заявки**\n\n"
-            "Пожалуйста, попробуйте позже или обратитесь в поддержку напрямую.",
+            f"❌ **Ошибка при создании заявки:**\n`{e}`",
             reply_markup=ReplyKeyboardRemove()
         )
-        print(f"Ошибка создания топика: {e}")
+        print(f"Ошибка: {e}")
 
+
+# ========== СОЗДАНИЕ ТИКЕТА (АТРИБУТЫ) ==========
 
 async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot):
-    """Создание тикета для атрибутов"""
     data = await state.get_data()
     user_name = data.get('user_name', 'Неизвестный')
     sku = data.get('sku', 'Не указан')
@@ -473,28 +467,15 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
         )
         topic_id = topic.message_thread_id
         
-        # ========== СОХРАНЯЕМ СВЯЗЬ В БАЗУ ДАННЫХ ==========
+        # Сохраняем связь
         db = message.bot.data.get("db") if hasattr(message.bot, 'data') else None
-        if db:
-            try:
-                await db.execute('''
-                    CREATE TABLE IF NOT EXISTS topic_links (
-                        topic_id INTEGER PRIMARY KEY,
-                        chat_id INTEGER,
-                        user_id INTEGER
-                    )
-                ''')
-                await db.execute(
-                    "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
-                    (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
-                )
+        if db and hasattr(db, 'execute'):
+            await db.execute(
+                "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
+                (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
+            )
+            if hasattr(db, 'commit'):
                 await db.commit()
-                print(f"✅ Сохранена связь: топик {topic_id} -> пользователь {message.from_user.id}")
-            except Exception as e:
-                print(f"⚠️ Ошибка сохранения связи: {e}")
-        else:
-            print("⚠️ БД не найдена, связь не сохранена!")
-        # ================================================
         
         ticket_text = (
             f"🆕 **НОВАЯ ЗАЯВКА (АТРИБУТЫ)**\n\n"
@@ -512,25 +493,21 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
         
         await message.answer(
             f"✅ **Заявка успешно создана!**\n\n"
-            f"Наши операторы скоро свяжутся с вами в этом чате.\n"
-            f"📌 Номер вашего тикета: `{topic_id}`\n\n"
-            f"👇 Нажмите **«На главную»**, чтобы создать новую заявку.",
+            f"📌 Номер тикета: `{topic_id}`\n\n"
+            f"👇 Нажмите **«На главную»**",
             reply_markup=main_menu_kb
         )
         
         await state.clear()
         
     except Exception as e:
-        await message.answer(
-            "❌ **Ошибка при создании заявки**\n\n"
-            "Пожалуйста, попробуйте позже.",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        print(f"Ошибка создания топика: {e}")
+        await message.answer(f"❌ Ошибка: {e}")
+        print(f"Ошибка: {e}")
 
+
+# ========== СОЗДАНИЕ ТИКЕТА (ВОПРОС) ==========
 
 async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
-    """Создание тикета для вопроса"""
     data = await state.get_data()
     user_name = data.get('user_name', 'Неизвестный')
     question = data.get('question', 'Не указан')
@@ -552,28 +529,15 @@ async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
         )
         topic_id = topic.message_thread_id
         
-        # ========== СОХРАНЯЕМ СВЯЗЬ В БАЗУ ДАННЫХ ==========
+        # Сохраняем связь
         db = message.bot.data.get("db") if hasattr(message.bot, 'data') else None
-        if db:
-            try:
-                await db.execute('''
-                    CREATE TABLE IF NOT EXISTS topic_links (
-                        topic_id INTEGER PRIMARY KEY,
-                        chat_id INTEGER,
-                        user_id INTEGER
-                    )
-                ''')
-                await db.execute(
-                    "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
-                    (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
-                )
+        if db and hasattr(db, 'execute'):
+            await db.execute(
+                "INSERT OR REPLACE INTO topic_links (topic_id, chat_id, user_id) VALUES (?, ?, ?)",
+                (topic_id, OPERATOR_GROUP_ID, message.from_user.id)
+            )
+            if hasattr(db, 'commit'):
                 await db.commit()
-                print(f"✅ Сохранена связь: топик {topic_id} -> пользователь {message.from_user.id}")
-            except Exception as e:
-                print(f"⚠️ Ошибка сохранения связи: {e}")
-        else:
-            print("⚠️ БД не найдена, связь не сохранена!")
-        # ================================================
         
         ticket_text = (
             f"🆕 **ВОПРОС ПОЛЬЗОВАТЕЛЯ**\n\n"
@@ -589,29 +553,23 @@ async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
         )
         
         await message.answer(
-            f"✅ **Ваш вопрос передан в наш отдел!**\n\n"
-            f"Ответ придёт вам в этот чат в ближайшее время.\n"
-            f"📌 Номер вашей заявки: `{topic_id}`\n\n"
-            f"👇 Нажмите **«На главную»**, чтобы создать новую заявку.",
+            f"✅ **Ваш вопрос передан!**\n\n"
+            f"📌 Номер заявки: `{topic_id}`\n\n"
+            f"👇 Нажмите **«На главную»**",
             reply_markup=main_menu_kb
         )
         
         await state.clear()
         
     except Exception as e:
-        await message.answer(
-            "❌ **Ошибка при отправке вопроса**\n\n"
-            "Пожалуйста, попробуйте позже.",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        print(f"Ошибка создания топика: {e}")
+        await message.answer(f"❌ Ошибка: {e}")
+        print(f"Ошибка: {e}")
 
 
 # ========== НА ГЛАВНУЮ ==========
 
 @router.message(F.text == "🏠 На главную")
 async def go_to_main_menu(message: Message, state: FSMContext):
-    """Возвращает пользователя в главное меню"""
     await state.clear()
     await state.set_state(TicketForm.waiting_for_question_type)
     
