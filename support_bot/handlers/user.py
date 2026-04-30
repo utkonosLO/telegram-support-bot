@@ -26,7 +26,7 @@ def find_last_topic_for_user(user_id: int) -> int | None:
                 if len(parts) >= 3:
                     try:
                         if int(parts[2]) == user_id:
-                            last_topic = int(parts[0])  # Берем последний (перезаписываем)
+                            last_topic = int(parts[0])  # Берём последний (перезаписываем)
                     except ValueError:
                         continue
         return last_topic
@@ -79,7 +79,7 @@ async def start_command(message: Message, bot: Bot):
 
 @router.message(F.chat.type == "private")
 async def user_message_handler(message: Message, bot: Bot):
-    """Пересылает сообщение в ПОСЛЕДНИЙ существующий топик"""
+    """Пересылает сообщение в ПОСЛЕДНИЙ существующий топик (без подтверждения)"""
     user_id = message.from_user.id
     user_name = message.from_user.full_name or message.from_user.first_name or "Пользователь"
     
@@ -87,12 +87,10 @@ async def user_message_handler(message: Message, bot: Bot):
     topic_id = find_last_topic_for_user(user_id)
     
     if topic_id:
-        # Отправляем в существующий топик
-        success = await send_to_topic(bot, topic_id, user_id, user_name, message)
-        if success:
-            await message.answer("✅ Сообщение отправлено оператору.")
-        else:
-            await message.answer("❌ Ошибка при отправке. Попробуйте позже.")
+        # Отправляем в существующий топик (без ответа пользователю)
+        await send_to_topic(bot, topic_id, user_id, user_name, message)
+        # ⬇️ Комментируем или удаляем строчку с подтверждением
+        # await message.answer("✅ Сообщение отправлено оператору.")
     else:
         # Нет топика — предлагаем создать заявку через /start
         await message.answer(
