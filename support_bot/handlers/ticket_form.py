@@ -6,6 +6,8 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKey
 from aiogram import Bot
 import os
 
+from support_bot.statistics import save_ticket_info
+
 router = Router()
 
 class TicketForm(StatesGroup):
@@ -61,6 +63,21 @@ def get_photo_upload_keyboard():
     )
 
 
+async def check_name(message: Message, state: FSMContext) -> bool:
+    """Проверяет, представился ли пользователь"""
+    data = await state.get_data()
+    if not data.get('user_name'):
+        await state.set_state(TicketForm.waiting_for_name)
+        await message.answer(
+            "📝 **Представьтесь, пожалуйста**\n\n"
+            "Как нам к вам обращаться?\n"
+            "*(Например: Иван Петров или просто Иван)*",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return False
+    return True
+
+
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
@@ -107,6 +124,8 @@ async def save_name(message: Message, state: FSMContext):
 
 @router.message(TicketForm.waiting_for_question_type, F.text == "📸 Некорректное фото")
 async def photo_question(message: Message, state: FSMContext):
+    if not await check_name(message, state):
+        return
     await state.set_state(TicketForm.waiting_for_photo_action)
     await message.answer(
         "🖼️ **Некорректное фото**\n\nЧто именно нужно сделать с фото?",
@@ -116,6 +135,8 @@ async def photo_question(message: Message, state: FSMContext):
 
 @router.message(TicketForm.waiting_for_question_type, F.text == "✍️ Некорректные атрибуты")
 async def attributes_question(message: Message, state: FSMContext):
+    if not await check_name(message, state):
+        return
     await state.set_state(TicketForm.waiting_for_attributes_sku)
     await message.answer(
         "✍️ **Некорректные атрибуты**\n\n📦 Введите **шестизначный номер SKU** товара:",
@@ -125,6 +146,8 @@ async def attributes_question(message: Message, state: FSMContext):
 
 @router.message(TicketForm.waiting_for_question_type, F.text == "❌ Нет фото")
 async def no_photo(message: Message, state: FSMContext):
+    if not await check_name(message, state):
+        return
     await state.clear()
     await message.answer(
         "😢 **Нам очень жаль!**\n\n"
@@ -136,6 +159,8 @@ async def no_photo(message: Message, state: FSMContext):
 
 @router.message(TicketForm.waiting_for_question_type, F.text == "❓ Задать вопрос")
 async def ask_question(message: Message, state: FSMContext):
+    if not await check_name(message, state):
+        return
     await state.set_state(TicketForm.waiting_for_other_reason)
     await message.answer(
         "💬 **Опишите ваш вопрос или проблему**\n\n✏️ Напишите ваш вопрос:",
@@ -261,14 +286,12 @@ async def get_other_question(message: Message, state: FSMContext, bot: Bot):
     await create_other_ticket(message, state, bot)
 
 
-# ========== ОСНОВНАЯ ФУНКЦИЯ СОЗДАНИЯ ТИКЕТА ==========
+# ========== ФУНКЦИЯ СОЗДАНИЯ ТИКЕТА (ФОТО) ==========
 
 async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str):
     data = await state.get_data()
     
-    # Берём имя из анкеты, если пользователь представился
     user_name = data.get('user_name')
-    # Если не представился — берём из Telegram
     if not user_name or user_name == 'Неизвестный':
         user_name = message.from_user.full_name or message.from_user.first_name or "Пользователь"
     
@@ -278,7 +301,7 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
     has_photo = data.get('has_photo', False)
     photo_file_id = data.get('photo_file_id', None)
     
-    OPERATOR_GROUP_ID = -1003953605950
+    OPERATOR_GROUP_ID = -1003953605950  # ЗАМЕНИТЕ НА ВАШ ID
     
     topic_name = f"{icon} Заявка от {user_name} (SKU: {sku})"
     
@@ -288,7 +311,6 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
     )
     
     try:
-        # Создаём топик
         topic = await bot.create_forum_topic(
             chat_id=OPERATOR_GROUP_ID,
             name=topic_name,
@@ -296,14 +318,15 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
         )
         topic_id = topic.message_thread_id
         
-        # Сохраняем связь
         os.makedirs('/app/data', exist_ok=True)
         with open('/app/data/topic_links.txt', 'a') as f:
             f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
         
+        # Сохраняем информацию для статистики
+        await save_ticket_info(topic_id, 'photo', message.from_user.id, user_name)
+        
         await message.answer(f"✅ Связь сохранена! (топик {topic_id} → {user_name})")
         
-        # Отправляем сообщение в топик
         ticket_text = (
             f"🆕 **НОВАЯ ЗАЯВКА**\n\n"
             f"👤 **Пользователь:** {user_name}\n"
@@ -337,6 +360,8 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
         await message.answer(f"❌ Ошибка: {e}")
 
 
+# ========== СОЗДАНИЕ ТИКЕТА (АТРИБУТЫ) ==========
+
 async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     
@@ -364,6 +389,9 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
         with open('/app/data/topic_links.txt', 'a') as f:
             f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
         
+        # Сохраняем информацию для статистики
+        await save_ticket_info(topic_id, 'attributes', message.from_user.id, user_name)
+        
         ticket_text = (
             f"🆕 **НОВАЯ ЗАЯВКА (АТРИБУТЫ)**\n\n"
             f"👤 **Пользователь:** {user_name}\n"
@@ -384,6 +412,8 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
 
+
+# ========== СОЗДАНИЕ ТИКЕТА (ВОПРОС) ==========
 
 async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
@@ -410,6 +440,9 @@ async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
         os.makedirs('/app/data', exist_ok=True)
         with open('/app/data/topic_links.txt', 'a') as f:
             f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
+        
+        # Сохраняем информацию для статистики
+        await save_ticket_info(topic_id, 'other', message.from_user.id, user_name)
         
         ticket_text = (
             f"🆕 **ВОПРОС ПОЛЬЗОВАТЕЛЯ**\n\n"
