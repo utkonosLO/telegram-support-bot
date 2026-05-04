@@ -1,24 +1,27 @@
 from aiogram import Router, F
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram import Bot
+import os
+
+from support_bot.statistics import save_ticket_info
 
 router = Router()
 
-# Состояния анкеты
 class TicketForm(StatesGroup):
-    waiting_for_name = State()           # Ожидание имени
-    waiting_for_question_type = State()   # Ожидание выбора типа вопроса
-    waiting_for_photo_action = State()    # Ожидание действия с фото
-    waiting_for_sku = State()             # Ожидание SKU
-    waiting_for_comment = State()         # Ожидание комментария
-    waiting_for_other_reason = State()    # Ожидание другого вопроса
-    waiting_for_attributes_sku = State()  # Ожидание SKU для атрибутов
-    waiting_for_attributes_comment = State()  # Ожидание комментария для атрибутов
+    waiting_for_name = State()
+    waiting_for_question_type = State()
+    waiting_for_photo_action = State()
+    waiting_for_sku = State()
+    waiting_for_comment = State()
+    waiting_for_photo_upload = State()
+    waiting_for_other_reason = State()
+    waiting_for_attributes_sku = State()
+    waiting_for_attributes_comment = State()
 
-# Клавиатуры
+
 def get_main_menu_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -29,6 +32,7 @@ def get_main_menu_keyboard():
         ],
         resize_keyboard=True
     )
+
 
 def get_photo_menu_keyboard():
     return ReplyKeyboardMarkup(
@@ -41,13 +45,39 @@ def get_photo_menu_keyboard():
         resize_keyboard=True
     )
 
+
 def get_back_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="◀️ Назад")]],
         resize_keyboard=True
     )
 
-# Старт бота
+
+def get_photo_upload_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📷 Загрузить фото")],
+            [KeyboardButton(text="❌ Нет возможности")]
+        ],
+        resize_keyboard=True
+    )
+
+
+async def check_name(message: Message, state: FSMContext) -> bool:
+    """Проверяет, представился ли пользователь"""
+    data = await state.get_data()
+    if not data.get('user_name'):
+        await state.set_state(TicketForm.waiting_for_name)
+        await message.answer(
+            "📝 **Представьтесь, пожалуйста**\n\n"
+            "Как нам к вам обращаться?\n"
+            "*(Например: Иван Петров или просто Иван)*",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return False
+    return True
+
+
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
@@ -69,18 +99,17 @@ async def cmd_start(message: Message, state: FSMContext):
         reply_markup=kb
     )
 
-# После ОК - просим представиться
+
 @router.message(TicketForm.waiting_for_name, F.text == "✅ ОК")
 async def ask_name(message: Message, state: FSMContext):
     await state.set_state(TicketForm.waiting_for_name)
     await message.answer(
         "📝 **Представьтесь, пожалуйста**\n\n"
-        "Как нам к вам обращаться?\n"
-        "*(Например: Иван Петров или просто Иван)*",
+        "Как нам к вам обращаться?",
         reply_markup=ReplyKeyboardRemove()
     )
 
-# Сохраняем имя и показываем главное меню
+
 @router.message(TicketForm.waiting_for_name, F.text)
 async def save_name(message: Message, state: FSMContext):
     await state.update_data(user_name=message.text)
@@ -88,190 +117,216 @@ async def save_name(message: Message, state: FSMContext):
     
     await message.answer(
         f"✨ **Приятно познакомиться, {message.text}!**\n\n"
-        f"❓ **Какой у вас вопрос?**\n\n"
-        f"Выберите категорию ниже 👇",
+        f"❓ **Какой у вас вопрос?**",
         reply_markup=get_main_menu_keyboard()
     )
 
-# Главное меню: Некорректное фото
+
 @router.message(TicketForm.waiting_for_question_type, F.text == "📸 Некорректное фото")
 async def photo_question(message: Message, state: FSMContext):
+    if not await check_name(message, state):
+        return
     await state.set_state(TicketForm.waiting_for_photo_action)
     await message.answer(
-        "🖼️ **Некорректное фото**\n\n"
-        "Что именно нужно сделать с фото?",
+        "🖼️ **Некорректное фото**\n\nЧто именно нужно сделать с фото?",
         reply_markup=get_photo_menu_keyboard()
     )
 
-# Главное меню: Некорректные атрибуты
+
 @router.message(TicketForm.waiting_for_question_type, F.text == "✍️ Некорректные атрибуты")
 async def attributes_question(message: Message, state: FSMContext):
+    if not await check_name(message, state):
+        return
     await state.set_state(TicketForm.waiting_for_attributes_sku)
     await message.answer(
-        "✍️ **Некорректные атрибуты**\n\n"
-        "📦 Введите **шестизначный номер SKU** товара:",
+        "✍️ **Некорректные атрибуты**\n\n📦 Введите **шестизначный номер SKU** товара:",
         reply_markup=get_back_keyboard()
     )
 
-# Главное меню: Нет фото
+
 @router.message(TicketForm.waiting_for_question_type, F.text == "❌ Нет фото")
 async def no_photo(message: Message, state: FSMContext):
+    if not await check_name(message, state):
+        return
     await state.clear()
     await message.answer(
         "😢 **Нам очень жаль!**\n\n"
         "Мы ежедневно мониторим весь ассортимент и ставим в план товары без фото.\n\n"
-        "📌 **Не требуется создавать дополнительных заявок** — если вы столкнулись с подобным, "
-        "скорее всего, этот товар уже у нас в работе.\n\n"
-        "✨ Всего доброго!",
+        "✨ Всего доброго!\n\n👇 Нажмите **/start**, чтобы начать заново.",
         reply_markup=ReplyKeyboardRemove()
     )
 
-# Главное меню: Задать вопрос
+
 @router.message(TicketForm.waiting_for_question_type, F.text == "❓ Задать вопрос")
 async def ask_question(message: Message, state: FSMContext):
+    if not await check_name(message, state):
+        return
     await state.set_state(TicketForm.waiting_for_other_reason)
     await message.answer(
-        "💬 **Опишите ваш вопрос или проблему**\n\n"
-        "Мы передадим его в соответствующий отдел:\n\n"
-        "✏️ Напишите ваш вопрос:",
+        "💬 **Опишите ваш вопрос или проблему**\n\n✏️ Напишите ваш вопрос:",
         reply_markup=get_back_keyboard()
     )
 
-# Фото меню: Сменить фото
+
 @router.message(TicketForm.waiting_for_photo_action, F.text == "🔄 Нужно сменить фото")
 async def change_photo(message: Message, state: FSMContext):
-    await state.update_data(photo_action="сменить фото")
+    await state.update_data(photo_action="сменить фото", question_type="photo")
     await state.set_state(TicketForm.waiting_for_sku)
-    await message.answer(
-        "📦 Введите **шестизначный номер SKU** товара:",
-        reply_markup=get_back_keyboard()
-    )
+    await message.answer("📦 Введите **шестизначный номер SKU** товара:", reply_markup=get_back_keyboard())
 
-# Фото меню: Удалить фото
+
 @router.message(TicketForm.waiting_for_photo_action, F.text == "🗑️ Нужно удалить фото")
 async def delete_photo(message: Message, state: FSMContext):
-    await state.update_data(photo_action="удалить фото")
+    await state.update_data(photo_action="удалить фото", question_type="photo")
     await state.set_state(TicketForm.waiting_for_sku)
-    await message.answer(
-        "📦 Введите **шестизначный номер SKU** товара:",
-        reply_markup=get_back_keyboard()
-    )
+    await message.answer("📦 Введите **шестизначный номер SKU** товара:", reply_markup=get_back_keyboard())
 
-# Фото меню: Другое
+
 @router.message(TicketForm.waiting_for_photo_action, F.text == "❓ Другое")
 async def photo_other(message: Message, state: FSMContext):
-    await state.update_data(photo_action="другое")
+    await state.update_data(photo_action="другое", question_type="photo")
     await state.set_state(TicketForm.waiting_for_sku)
-    await message.answer(
-        "📦 Введите **шестизначный номер SKU** товара:",
-        reply_markup=get_back_keyboard()
-    )
+    await message.answer("📦 Введите **шестизначный номер SKU** товара:", reply_markup=get_back_keyboard())
 
-# Получаем SKU для фото
+
+@router.message(TicketForm.waiting_for_photo_action, F.text == "◀️ Назад")
+async def photo_back(message: Message, state: FSMContext):
+    await state.set_state(TicketForm.waiting_for_question_type)
+    await message.answer("❓ **Какой у вас вопрос?**", reply_markup=get_main_menu_keyboard())
+
+
 @router.message(TicketForm.waiting_for_sku, F.text)
 async def get_photo_sku(message: Message, state: FSMContext):
     if message.text == "◀️ Назад":
-        await state.set_state(TicketForm.waiting_for_question_type)
-        await message.answer(
-            "❓ **Какой у вас вопрос?**",
-            reply_markup=get_main_menu_keyboard()
-        )
+        await state.set_state(TicketForm.waiting_for_photo_action)
+        await message.answer("🖼️ **Некорректное фото**\n\nЧто нужно сделать с фото?", reply_markup=get_photo_menu_keyboard())
         return
     
     await state.update_data(sku=message.text)
     await state.set_state(TicketForm.waiting_for_comment)
     await message.answer(
-        "💬 **Введите комментарий**\n\n"
-        "Опишите, что именно не так с фото, какие нужны изменения:\n\n"
-        "✏️ Ваш комментарий:",
+        "💬 **Введите комментарий**\n\nОпишите, что именно не так с фото:",
         reply_markup=get_back_keyboard()
     )
 
-# Получаем SKU для атрибутов
+
+@router.message(TicketForm.waiting_for_comment, F.text)
+async def get_photo_comment(message: Message, state: FSMContext):
+    if message.text == "◀️ Назад":
+        await state.set_state(TicketForm.waiting_for_sku)
+        await message.answer("📦 Введите **шестизначный номер SKU** товара:", reply_markup=get_back_keyboard())
+        return
+    
+    await state.update_data(comment=message.text)
+    await state.set_state(TicketForm.waiting_for_photo_upload)
+    
+    await message.answer(
+        "📸 **У вас есть возможность загрузить корректное фото?**\n\n"
+        "📌 *Подойдет фото с телефона на светлом фоне*\n\n"
+        "• Отправить фото\n"
+        "• Нажать «❌ Нет возможности»",
+        reply_markup=get_photo_upload_keyboard()
+    )
+
+
+@router.message(TicketForm.waiting_for_photo_upload, F.photo)
+async def handle_photo_upload(message: Message, state: FSMContext, bot: Bot):
+    photo = message.photo[-1]
+    await state.update_data(has_photo=True, photo_file_id=photo.file_id)
+    await message.answer("✅ **Спасибо! Фото получено.**", reply_markup=ReplyKeyboardRemove())
+    await create_ticket(message, state, bot, "📸")
+
+
+@router.message(TicketForm.waiting_for_photo_upload, F.text == "❌ Нет возможности")
+async def no_photo_upload(message: Message, state: FSMContext, bot: Bot):
+    await state.update_data(has_photo=False)
+    await message.answer("😔 **Очень жаль!**\n\nМы всё равно передадим вашу заявку.", reply_markup=ReplyKeyboardRemove())
+    await create_ticket(message, state, bot, "📸")
+
+
+@router.message(TicketForm.waiting_for_photo_upload, F.text)
+async def invalid_photo_response(message: Message, state: FSMContext):
+    await message.answer("❓ Отправьте **фото** или нажмите **«❌ Нет возможности»**.", reply_markup=get_photo_upload_keyboard())
+
+
 @router.message(TicketForm.waiting_for_attributes_sku, F.text)
 async def get_attributes_sku(message: Message, state: FSMContext):
     if message.text == "◀️ Назад":
         await state.set_state(TicketForm.waiting_for_question_type)
-        await message.answer(
-            "❓ **Какой у вас вопрос?**",
-            reply_markup=get_main_menu_keyboard()
-        )
+        await message.answer("❓ **Какой у вас вопрос?**", reply_markup=get_main_menu_keyboard())
         return
     
-    await state.update_data(sku=message.text)
+    await state.update_data(sku=message.text, question_type="attributes")
     await state.set_state(TicketForm.waiting_for_attributes_comment)
     await message.answer(
-        "💬 **Введите комментарий**\n\n"
-        "Опишите, какой атрибут некорректен, какие данные указаны неверно:\n\n"
-        "✏️ Ваш комментарий:",
+        "💬 **Введите комментарий**\n\nОпишите, какой атрибут некорректен:",
         reply_markup=get_back_keyboard()
     )
 
-# Получаем комментарий для фото
-@router.message(TicketForm.waiting_for_comment, F.text)
-async def get_photo_comment(message: Message, state: FSMContext, bot: Bot):
-    if message.text == "◀️ Назад":
-        await state.set_state(TicketForm.waiting_for_photo_action)
-        await message.answer(
-            "🖼️ **Некорректное фото**\n\nЧто нужно сделать с фото?",
-            reply_markup=get_photo_menu_keyboard()
-        )
-        return
-    
-    await state.update_data(comment=message.text)
-    await create_ticket(message, state, bot, "📸")
 
-# Получаем комментарий для атрибутов
 @router.message(TicketForm.waiting_for_attributes_comment, F.text)
 async def get_attributes_comment(message: Message, state: FSMContext, bot: Bot):
     if message.text == "◀️ Назад":
-        await state.set_state(TicketForm.waiting_for_question_type)
-        await message.answer(
-            "❓ **Какой у вас вопрос?**",
-            reply_markup=get_main_menu_keyboard()
-        )
+        await state.set_state(TicketForm.waiting_for_attributes_sku)
+        await message.answer("📦 Введите **шестизначный номер SKU** товара:", reply_markup=get_back_keyboard())
         return
     
     await state.update_data(comment=message.text)
-    await create_ticket(message, state, bot, "✍️")
+    await create_attributes_ticket(message, state, bot)
 
-# Получаем другой вопрос
+
 @router.message(TicketForm.waiting_for_other_reason, F.text)
 async def get_other_question(message: Message, state: FSMContext, bot: Bot):
     if message.text == "◀️ Назад":
         await state.set_state(TicketForm.waiting_for_question_type)
-        await message.answer(
-            "❓ **Какой у вас вопрос?**",
-            reply_markup=get_main_menu_keyboard()
-        )
+        await message.answer("❓ **Какой у вас вопрос?**", reply_markup=get_main_menu_keyboard())
         return
     
     await state.update_data(question=message.text, is_other=True)
     await create_other_ticket(message, state, bot)
 
-# Функция создания топика для фото/атрибутов
+
+# ========== ФУНКЦИЯ СОЗДАНИЯ ТИКЕТА (ФОТО) ==========
+
 async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str):
     data = await state.get_data()
-    user_name = data.get('user_name', 'Неизвестный')
+    
+    user_name = data.get('user_name')
+    if not user_name or user_name == 'Неизвестный':
+        user_name = message.from_user.full_name or message.from_user.first_name or "Пользователь"
+    
     sku = data.get('sku', 'Не указан')
     comment = data.get('comment', 'Не указан')
     photo_action = data.get('photo_action', '')
+    has_photo = data.get('has_photo', False)
+    photo_file_id = data.get('photo_file_id', None)
     
-    OPERATOR_GROUP_ID = -1003953605950  # Замените на ваш ID группы
+    OPERATOR_GROUP_ID = -1003953605950  # ЗАМЕНИТЕ НА ВАШ ID
     
-    # Формируем название топика
     topic_name = f"{icon} Заявка от {user_name} (SKU: {sku})"
     
+    main_menu_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🏠 На главную")]],
+        resize_keyboard=True
+    )
+    
     try:
-        # Создаём топик с красным смайликом 🔴
         topic = await bot.create_forum_topic(
             chat_id=OPERATOR_GROUP_ID,
             name=topic_name,
-            icon_color=0xFF0000  # Красный цвет
+            icon_color=0xFF0000
         )
         topic_id = topic.message_thread_id
         
-        # Отправляем сообщение в топик
+        os.makedirs('/app/data', exist_ok=True)
+        with open('/app/data/topic_links.txt', 'a') as f:
+            f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
+        
+        # Сохраняем информацию для статистики
+        await save_ticket_info(topic_id, 'photo', message.from_user.id, user_name)
+        
+        await message.answer(f"✅ Связь сохранена! (топик {topic_id} → {user_name})")
+        
         ticket_text = (
             f"🆕 **НОВАЯ ЗАЯВКА**\n\n"
             f"👤 **Пользователь:** {user_name}\n"
@@ -282,49 +337,112 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
         if photo_action:
             ticket_text += f"📸 **Действие:** {photo_action}\n"
         
-        ticket_text += f"\n💬 **Комментарий:**\n{comment}"
+        ticket_text += f"\n💬 **Комментарий:**\n{comment}\n"
         
-        await bot.send_message(
-            chat_id=OPERATOR_GROUP_ID,
-            text=ticket_text,
-            message_thread_id=topic_id
-        )
+        if has_photo:
+            ticket_text += f"\n📷 **Пользователь загрузил фото** ✅"
+        else:
+            ticket_text += f"\n📷 **Фото:** не загружено ❌"
         
-        # Отправляем пользователю подтверждение
+        await bot.send_message(chat_id=OPERATOR_GROUP_ID, text=ticket_text, message_thread_id=topic_id)
+        
+        if has_photo and photo_file_id:
+            await bot.send_photo(chat_id=OPERATOR_GROUP_ID, photo=photo_file_id, message_thread_id=topic_id)
+        
         await message.answer(
-            "✅ **Заявка успешно создана!**\n\n"
-            "Наши операторы скоро свяжутся с вами в этом чате.\n"
-            "📌 Номер вашего тикета: `" + str(topic_id) + "`",
-            reply_markup=ReplyKeyboardRemove()
+            f"✅ **Заявка создана!**\n📌 Номер тикета: `{topic_id}`\n\n👇 Нажмите **«На главную»**",
+            reply_markup=main_menu_kb
         )
         
         await state.clear()
         
     except Exception as e:
-        await message.answer(
-            "❌ **Ошибка при создании заявки**\n\n"
-            "Пожалуйста, попробуйте позже или обратитесь в поддержку напрямую.",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        print(f"Ошибка создания топика: {e}")
+        await message.answer(f"❌ Ошибка: {e}")
 
-# Функция создания топика для "Задать вопрос"
+
+# ========== СОЗДАНИЕ ТИКЕТА (АТРИБУТЫ) ==========
+
+async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    
+    user_name = data.get('user_name')
+    if not user_name or user_name == 'Неизвестный':
+        user_name = message.from_user.full_name or message.from_user.first_name or "Пользователь"
+    
+    sku = data.get('sku', 'Не указан')
+    comment = data.get('comment', 'Не указан')
+    
+    OPERATOR_GROUP_ID = -1003953605950
+    
+    topic_name = f"✍️ Заявка от {user_name} (SKU: {sku})"
+    
+    main_menu_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🏠 На главную")]],
+        resize_keyboard=True
+    )
+    
+    try:
+        topic = await bot.create_forum_topic(chat_id=OPERATOR_GROUP_ID, name=topic_name, icon_color=0xFF0000)
+        topic_id = topic.message_thread_id
+        
+        os.makedirs('/app/data', exist_ok=True)
+        with open('/app/data/topic_links.txt', 'a') as f:
+            f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
+        
+        # Сохраняем информацию для статистики
+        await save_ticket_info(topic_id, 'attributes', message.from_user.id, user_name)
+        
+        ticket_text = (
+            f"🆕 **НОВАЯ ЗАЯВКА (АТРИБУТЫ)**\n\n"
+            f"👤 **Пользователь:** {user_name}\n"
+            f"🆔 **ID:** `{message.from_user.id}`\n"
+            f"📦 **SKU:** `{sku}`\n\n"
+            f"💬 **Комментарий:**\n{comment}"
+        )
+        
+        await bot.send_message(chat_id=OPERATOR_GROUP_ID, text=ticket_text, message_thread_id=topic_id)
+        
+        await message.answer(
+            f"✅ **Заявка создана!**\n📌 Номер тикета: `{topic_id}`\n\n👇 Нажмите **«На главную»**",
+            reply_markup=main_menu_kb
+        )
+        
+        await state.clear()
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+# ========== СОЗДАНИЕ ТИКЕТА (ВОПРОС) ==========
+
 async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
-    user_name = data.get('user_name', 'Неизвестный')
+    
+    user_name = data.get('user_name')
+    if not user_name or user_name == 'Неизвестный':
+        user_name = message.from_user.full_name or message.from_user.first_name or "Пользователь"
+    
     question = data.get('question', 'Не указан')
     
     OPERATOR_GROUP_ID = -1003953605950
     
     topic_name = f"❓ Вопрос от {user_name}"
     
+    main_menu_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🏠 На главную")]],
+        resize_keyboard=True
+    )
+    
     try:
-        topic = await bot.create_forum_topic(
-            chat_id=OPERATOR_GROUP_ID,
-            name=topic_name,
-            icon_color=0xFF0000
-        )
+        topic = await bot.create_forum_topic(chat_id=OPERATOR_GROUP_ID, name=topic_name, icon_color=0xFF0000)
         topic_id = topic.message_thread_id
+        
+        os.makedirs('/app/data', exist_ok=True)
+        with open('/app/data/topic_links.txt', 'a') as f:
+            f.write(f"{topic_id},{OPERATOR_GROUP_ID},{message.from_user.id}\n")
+        
+        # Сохраняем информацию для статистики
+        await save_ticket_info(topic_id, 'other', message.from_user.id, user_name)
         
         ticket_text = (
             f"🆕 **ВОПРОС ПОЛЬЗОВАТЕЛЯ**\n\n"
@@ -333,25 +451,24 @@ async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
             f"💬 **Вопрос:**\n{question}"
         )
         
-        await bot.send_message(
-            chat_id=OPERATOR_GROUP_ID,
-            text=ticket_text,
-            message_thread_id=topic_id
-        )
+        await bot.send_message(chat_id=OPERATOR_GROUP_ID, text=ticket_text, message_thread_id=topic_id)
         
         await message.answer(
-            "✅ **Ваш вопрос передан в наш отдел!**\n\n"
-            "Ответ придёт вам в этот чат в ближайшее время.\n"
-            "📌 Номер вашей заявки: `" + str(topic_id) + "`",
-            reply_markup=ReplyKeyboardRemove()
+            f"✅ **Вопрос передан!**\n📌 Номер заявки: `{topic_id}`\n\n👇 Нажмите **«На главную»**",
+            reply_markup=main_menu_kb
         )
         
         await state.clear()
         
     except Exception as e:
-        await message.answer(
-            "❌ **Ошибка при отправке вопроса**\n\n"
-            "Пожалуйста, попробуйте позже.",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        print(f"Ошибка создания топика: {e}")
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+@router.message(F.text == "🏠 На главную")
+async def go_to_main_menu(message: Message, state: FSMContext):
+    await state.clear()
+    await state.set_state(TicketForm.waiting_for_question_type)
+    await message.answer(
+        "🏠 **Главное меню**\n\n❓ **Какой у вас вопрос?**",
+        reply_markup=get_main_menu_keyboard()
+    )
