@@ -6,7 +6,14 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
-from support_bot.statistics import mark_ticket_as_answered, save_operator_reply, send_weekly_report
+from support_bot.statistics import (
+    mark_ticket_as_answered, 
+    save_operator_reply, 
+    send_weekly_report,
+    OPERATOR_GROUP_ID,
+    GENERAL_TOPIC_ID,
+    get_weekly_statistics
+)
 
 router = Router()
 log = logging.getLogger(__name__)
@@ -267,6 +274,84 @@ async def send_report_now(message: Message, bot: Bot):
         log.error(f"Ошибка при отправке отчёта по запросу: {e}")
 
 
+@router.message(F.chat.type == "supergroup", F.text.lower() == "/debug")
+async def debug_report(message: Message, bot: Bot):
+    """
+    Диагностика отправки отчёта (команда /debug)
+    """
+    debug_info = f"🔍 **Диагностика отправки:**\n\n"
+    debug_info += f"📌 ID группы (конфиг): `{OPERATOR_GROUP_ID}`\n"
+    debug_info += f"📌 ID GENERAL топика: `{GENERAL_TOPIC_ID}`\n"
+    debug_info += f"📌 Текущий чат ID: `{message.chat.id}`\n"
+    debug_info += f"📌 Текущий топик ID: `{message.message_thread_id}`\n\n"
+    
+    # Проверяем, есть ли данные для статистики
+    stats = await get_weekly_statistics()
+    
+    if stats and stats['total'] > 0:
+        debug_info += f"📊 **Данные есть:** {stats['total']} заявок за неделю\n"
+        debug_info += f"   • Фото: {stats['photo']}\n"
+        debug_info += f"   • Атрибуты: {stats['attributes']}\n"
+        debug_info += f"   • Вопросы: {stats['other']}\n"
+        debug_info += f"   • Отвечено: {stats['answered']}\n"
+        debug_info += f"   • Не отвечено: {stats['unanswered']}\n\n"
+    else:
+        debug_info += f"📊 **Данных за неделю нет** (или файл пуст)\n\n"
+        debug_info += f"💡 **Чтобы появились данные:**\n"
+        debug_info += f"1. Создайте новую заявку через /start\n"
+        debug_info += f"2. Оператор должен ответить на неё\n"
+        debug_info += f"3. После этого отправьте /report снова\n\n"
+    
+    # Пробуем отправить тестовое сообщение напрямую в GENERAL топик
+    try:
+        await bot.send_message(
+            chat_id=OPERATOR_GROUP_ID,
+            text="🔍 **Тестовое сообщение от бота** (проверка связи с GENERAL топиком)",
+            message_thread_id=GENERAL_TOPIC_ID
+        )
+        debug_info += f"✅ **Тестовое сообщение отправлено в GENERAL топик**\n"
+        debug_info += f"   Проверьте топик https://t.me/LO_Content/1\n"
+    except Exception as e:
+        debug_info += f"❌ **Ошибка при отправке в GENERAL топик:**\n"
+        debug_info += f"   `{e}`\n"
+    
+    # Проверяем наличие файлов данных
+    debug_info += f"\n📁 **Файлы данных:**\n"
+    
+    import os
+    files_to_check = [
+        '/app/data/topic_links.txt',
+        '/app/data/tickets_info.txt',
+        '/app/data/operators_stats.txt'
+    ]
+    
+    for file_path in files_to_check:
+        if os.path.exists(file_path):
+            size = os.path.getsize(file_path)
+            debug_info += f"   ✅ {os.path.basename(file_path)} ({size} байт)\n"
+        else:
+            debug_info += f"   ❌ {os.path.basename(file_path)} (не существует)\n"
+    
+    await message.answer(debug_info)
+
+
+@router.message(F.chat.type == "supergroup", F.text.lower() == "/test")
+async def test_general_topic(message: Message, bot: Bot):
+    """
+    Тестовая команда для проверки отправки в GENERAL топик
+    """
+    from support_bot.statistics import send_test_report
+    
+    await message.answer("🔍 **Тест отправки в GENERAL топик...**")
+    
+    result = await send_test_report(bot)
+    
+    if result:
+        await message.answer("✅ **Тестовое сообщение отправлено!** Проверьте GENERAL топик: https://t.me/LO_Content/1")
+    else:
+        await message.answer("❌ **Ошибка!** Не удалось отправить сообщение. Проверьте логи.")
+
+
 @router.message(F.chat.type == "supergroup", F.text.lower() == "/help")
 async def operator_help(message: Message):
     """
@@ -277,6 +362,8 @@ async def operator_help(message: Message):
         "📌 **Основные команды:**\n"
         "• `/close` - закрыть текущий тикет\n"
         "• `/report` - отправить еженедельный отчёт немедленно\n"
+        "• `/debug` - диагностика отправки отчётов\n"
+        "• `/test` - тестовая отправка в GENERAL топик\n"
         "• `/help` - показать эту справку\n\n"
         "📌 **Как отвечать пользователям:**\n"
         "• Найдите **сообщение пользователя** в топике\n"
@@ -296,6 +383,7 @@ async def operator_help(message: Message):
         "• Если пользователь не получает ответ - попросите его написать любое сообщение боту\n\n"
         "📊 **Статистика:**\n"
         "• Каждый понедельник в 10:00 приходит автоматическая сводка\n"
-        "• В любой момент можно запросить отчёт командой `/report`"
+        "• В любой момент можно запросить отчёт командой `/report`\n"
+        "• Для диагностики используйте `/debug`"
     )
     await message.answer(help_text, parse_mode="HTML")
