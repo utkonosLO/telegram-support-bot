@@ -16,13 +16,13 @@ class TicketForm(StatesGroup):
     waiting_for_photo_action = State()
     waiting_for_sku = State()
     waiting_for_comment = State()
-    waiting_for_photo_upload = State()
-    waiting_for_barcode_photo = State()  # НОВОЕ СОСТОЯНИЕ: фото штрихкода
+    waiting_for_packaging_photo = State()      # НОВОЕ: фото упаковки
+    waiting_for_barcode_photo = State()        # НОВОЕ: фото штрихкода
     waiting_for_other_reason = State()
     waiting_for_attributes_sku = State()
     waiting_for_attributes_comment = State()
-    waiting_for_no_photo_sku = State()  # НОВОЕ СОСТОЯНИЕ: SKU для "Нет фото"
-    waiting_for_no_photo_comment = State()  # НОВОЕ СОСТОЯНИЕ: комментарий для "Нет фото"
+    waiting_for_no_photo_sku = State()
+    waiting_for_no_photo_comment = State()
 
 
 def get_main_menu_keyboard():
@@ -56,12 +56,10 @@ def get_back_keyboard():
     )
 
 
-def get_barcode_keyboard():
+def get_skip_keyboard():
+    """Клавиатура с кнопкой пропуска"""
     return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📷 Отправить фото штрихкода")],
-            [KeyboardButton(text="⏭️ Пропустить")]
-        ],
+        keyboard=[[KeyboardButton(text="⏭️ Пропустить")]],
         resize_keyboard=True
     )
 
@@ -132,10 +130,14 @@ async def save_name(message: Message, state: FSMContext):
 async def photo_question(message: Message, state: FSMContext):
     if not await check_name(message, state):
         return
-    await state.set_state(TicketForm.waiting_for_photo_action)
+    await state.set_state(TicketForm.waiting_for_packaging_photo)
     await message.answer(
-        "🖼️ **Некорректное фото**\n\nЧто именно нужно сделать с фото?",
-        reply_markup=get_photo_menu_keyboard()
+        "📸 **Шаг 1: Приложите фото упаковки товара**\n\n"
+        "Сфотографируйте упаковку товара и отправьте фото.\n\n"
+        "📌 *Это поможет нам идентифицировать товар*\n\n"
+        "• Отправьте фото упаковки\n"
+        "• Или нажмите «Пропустить»",
+        reply_markup=get_skip_keyboard()
     )
 
 
@@ -173,6 +175,80 @@ async def ask_question(message: Message, state: FSMContext):
     )
 
 
+# ========== ФОТО УПАКОВКИ ==========
+
+@router.message(TicketForm.waiting_for_packaging_photo, F.photo)
+async def handle_packaging_photo(message: Message, state: FSMContext):
+    photo = message.photo[-1]
+    await state.update_data(has_packaging_photo=True, packaging_photo_id=photo.file_id)
+    await message.answer("✅ **Фото упаковки получено!**")
+    await state.set_state(TicketForm.waiting_for_barcode_photo)
+    await message.answer(
+        "📸 **Шаг 2: Приложите фото штрихкода (ШК) с упаковки товара**\n\n"
+        "Дополнительно приложите фото штрихкода на упаковке.\n\n"
+        "📌 *Это поможет нам быстрее обработать вашу заявку*\n\n"
+        "• Отправьте фото ШК\n"
+        "• Или нажмите «Пропустить»",
+        reply_markup=get_skip_keyboard()
+    )
+
+
+@router.message(TicketForm.waiting_for_packaging_photo, F.text == "⏭️ Пропустить")
+async def skip_packaging_photo(message: Message, state: FSMContext):
+    await state.update_data(has_packaging_photo=False)
+    await message.answer("⏭️ **Фото упаковки пропущено**")
+    await state.set_state(TicketForm.waiting_for_barcode_photo)
+    await message.answer(
+        "📸 **Шаг 2: Приложите фото штрихкода (ШК) с упаковки товара**\n\n"
+        "Дополнительно приложите фото штрихкода на упаковке.\n\n"
+        "📌 *Это поможет нам быстрее обработать вашу заявку*\n\n"
+        "• Отправьте фото ШК\n"
+        "• Или нажмите «Пропустить»",
+        reply_markup=get_skip_keyboard()
+    )
+
+
+@router.message(TicketForm.waiting_for_packaging_photo, F.text)
+async def invalid_packaging_response(message: Message, state: FSMContext):
+    await message.answer(
+        "❓ Пожалуйста, отправьте **фото упаковки** или нажмите **«Пропустить»**.",
+        reply_markup=get_skip_keyboard()
+    )
+
+
+# ========== ФОТО ШТРИХКОДА ==========
+
+@router.message(TicketForm.waiting_for_barcode_photo, F.photo)
+async def handle_barcode_photo(message: Message, state: FSMContext):
+    photo = message.photo[-1]
+    await state.update_data(has_barcode=True, barcode_photo_id=photo.file_id)
+    await message.answer("✅ **Фото штрихкода получено!**")
+    await state.set_state(TicketForm.waiting_for_photo_action)
+    await message.answer(
+        "🖼️ **Некорректное фото**\n\nЧто именно нужно сделать с фото?",
+        reply_markup=get_photo_menu_keyboard()
+    )
+
+
+@router.message(TicketForm.waiting_for_barcode_photo, F.text == "⏭️ Пропустить")
+async def skip_barcode_photo(message: Message, state: FSMContext):
+    await state.update_data(has_barcode=False)
+    await message.answer("⏭️ **Фото штрихкода пропущено**")
+    await state.set_state(TicketForm.waiting_for_photo_action)
+    await message.answer(
+        "🖼️ **Некорректное фото**\n\nЧто именно нужно сделать с фото?",
+        reply_markup=get_photo_menu_keyboard()
+    )
+
+
+@router.message(TicketForm.waiting_for_barcode_photo, F.text)
+async def invalid_barcode_response(message: Message, state: FSMContext):
+    await message.answer(
+        "❓ Пожалуйста, отправьте **фото штрихкода** или нажмите **«Пропустить»**.",
+        reply_markup=get_skip_keyboard()
+    )
+
+
 # ========== ФОТО МЕНЮ ==========
 
 @router.message(TicketForm.waiting_for_photo_action, F.text == "🔄 Нужно сменить фото")
@@ -202,7 +278,7 @@ async def photo_back(message: Message, state: FSMContext):
     await message.answer("❓ **Какой у вас вопрос?**", reply_markup=get_main_menu_keyboard())
 
 
-# ========== SKU И КОММЕНТАРИЙ ДЛЯ ФОТО ==========
+# ========== SKU И КОММЕНТАРИЙ ==========
 
 @router.message(TicketForm.waiting_for_sku, F.text)
 async def get_photo_sku(message: Message, state: FSMContext):
@@ -227,40 +303,7 @@ async def get_photo_comment(message: Message, state: FSMContext):
         return
     
     await state.update_data(comment=message.text)
-    await state.set_state(TicketForm.waiting_for_barcode_photo)
-    
-    await message.answer(
-        "📸 **Приложите фото штрихкода с упаковки товара**\n\n"
-        "📌 *Это поможет нам быстрее обработать вашу заявку*\n\n"
-        "• Отправьте фото штрихкода\n"
-        "• Или нажмите «Пропустить»",
-        reply_markup=get_barcode_keyboard()
-    )
-
-
-# ========== ФОТО ШТРИХКОДА ==========
-
-@router.message(TicketForm.waiting_for_barcode_photo, F.photo)
-async def handle_barcode_photo(message: Message, state: FSMContext, bot: Bot):
-    photo = message.photo[-1]
-    await state.update_data(has_barcode=True, barcode_file_id=photo.file_id)
-    await message.answer("✅ **Спасибо! Фото штрихкода получено.**", reply_markup=ReplyKeyboardRemove())
-    await create_ticket(message, state, bot, "📸")
-
-
-@router.message(TicketForm.waiting_for_barcode_photo, F.text == "⏭️ Пропустить")
-async def skip_barcode(message: Message, state: FSMContext, bot: Bot):
-    await state.update_data(has_barcode=False)
-    await message.answer("⏭️ **Фото штрихкода пропущено**\n\nЗаявка будет обработана без него.", reply_markup=ReplyKeyboardRemove())
-    await create_ticket(message, state, bot, "📸")
-
-
-@router.message(TicketForm.waiting_for_barcode_photo, F.text)
-async def invalid_barcode_response(message: Message, state: FSMContext):
-    await message.answer(
-        "❓ Пожалуйста, отправьте **фото штрихкода** или нажмите **«Пропустить»**.",
-        reply_markup=get_barcode_keyboard()
-    )
+    await create_ticket(message, state)
 
 
 # ========== НЕТ ФОТО: SKU И КОММЕНТАРИЙ ==========
@@ -318,15 +361,7 @@ async def get_attributes_comment(message: Message, state: FSMContext, bot: Bot):
         return
     
     await state.update_data(comment=message.text)
-    await state.set_state(TicketForm.waiting_for_barcode_photo)
-    
-    await message.answer(
-        "📸 **Приложите фото штрихкода с упаковки товара**\n\n"
-        "📌 *Это поможет нам быстрее обработать вашу заявку*\n\n"
-        "• Отправьте фото штрихкода\n"
-        "• Или нажмите «Пропустить»",
-        reply_markup=get_barcode_keyboard()
-    )
+    await create_attributes_ticket(message, state, bot)
 
 
 # ========== ДРУГОЙ ВОПРОС ==========
@@ -344,7 +379,8 @@ async def get_other_question(message: Message, state: FSMContext, bot: Bot):
 
 # ========== ФУНКЦИИ СОЗДАНИЯ ТИКЕТОВ ==========
 
-async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str):
+async def create_ticket(message: Message, state: FSMContext):
+    """Создание тикета для заявки по фото"""
     data = await state.get_data()
     
     user_name = data.get('user_name')
@@ -354,12 +390,14 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
     sku = data.get('sku', 'Не указан')
     comment = data.get('comment', 'Не указан')
     photo_action = data.get('photo_action', '')
+    has_packaging_photo = data.get('has_packaging_photo', False)
     has_barcode = data.get('has_barcode', False)
-    barcode_file_id = data.get('barcode_file_id', None)
+    packaging_photo_id = data.get('packaging_photo_id', None)
+    barcode_photo_id = data.get('barcode_photo_id', None)
     
     OPERATOR_GROUP_ID = -1003953605950
     
-    topic_name = f"{icon} Заявка от {user_name} (SKU: {sku})"
+    topic_name = f"📸 Заявка от {user_name} (SKU: {sku})"
     
     main_menu_kb = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="🏠 На главную")]],
@@ -367,6 +405,8 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
     )
     
     try:
+        bot = message.bot
+        
         topic = await bot.create_forum_topic(
             chat_id=OPERATOR_GROUP_ID,
             name=topic_name,
@@ -390,17 +430,25 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
         if photo_action:
             ticket_text += f"📸 **Действие:** {photo_action}\n"
         
-        ticket_text += f"\n💬 **Комментарий:**\n{comment}\n"
+        ticket_text += f"\n💬 **Комментарий:**\n{comment}\n\n"
+        
+        if has_packaging_photo:
+            ticket_text += f"📦 **Фото упаковки:** получено ✅\n"
+        else:
+            ticket_text += f"📦 **Фото упаковки:** не получено ❌\n"
         
         if has_barcode:
-            ticket_text += f"\n📷 **Фото штрихкода:** получено ✅"
+            ticket_text += f"🔢 **Фото штрихкода:** получено ✅"
         else:
-            ticket_text += f"\n📷 **Фото штрихкода:** не получено ❌"
+            ticket_text += f"🔢 **Фото штрихкода:** не получено ❌"
         
         await bot.send_message(chat_id=OPERATOR_GROUP_ID, text=ticket_text, message_thread_id=topic_id)
         
-        if has_barcode and barcode_file_id:
-            await bot.send_photo(chat_id=OPERATOR_GROUP_ID, photo=barcode_file_id, message_thread_id=topic_id)
+        if has_packaging_photo and packaging_photo_id:
+            await bot.send_photo(chat_id=OPERATOR_GROUP_ID, photo=packaging_photo_id, message_thread_id=topic_id)
+        
+        if has_barcode and barcode_photo_id:
+            await bot.send_photo(chat_id=OPERATOR_GROUP_ID, photo=barcode_photo_id, message_thread_id=topic_id)
         
         await message.answer(
             f"✅ **Заявка создана!**\n📌 Номер тикета: `{topic_id}`\n\n👇 Нажмите **«На главную»**",
@@ -414,6 +462,7 @@ async def create_ticket(message: Message, state: FSMContext, bot: Bot, icon: str
 
 
 async def create_no_photo_ticket(message: Message, state: FSMContext, bot: Bot):
+    """Создание тикета для заявки "Нет фото" (без запроса фото)"""
     data = await state.get_data()
     
     user_name = data.get('user_name')
@@ -475,6 +524,7 @@ async def create_no_photo_ticket(message: Message, state: FSMContext, bot: Bot):
 
 
 async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot):
+    """Создание тикета для атрибутов (без запроса фото)"""
     data = await state.get_data()
     
     user_name = data.get('user_name')
@@ -483,8 +533,6 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
     
     sku = data.get('sku', 'Не указан')
     comment = data.get('comment', 'Не указан')
-    has_barcode = data.get('has_barcode', False)
-    barcode_file_id = data.get('barcode_file_id', None)
     
     OPERATOR_GROUP_ID = -1003953605950
     
@@ -510,18 +558,10 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
             f"👤 **Пользователь:** {user_name}\n"
             f"🆔 **ID:** `{message.from_user.id}`\n"
             f"📦 **SKU:** `{sku}`\n\n"
-            f"💬 **Комментарий:**\n{comment}\n"
+            f"💬 **Комментарий:**\n{comment}"
         )
         
-        if has_barcode:
-            ticket_text += f"\n📷 **Фото штрихкода:** получено ✅"
-        else:
-            ticket_text += f"\n📷 **Фото штрихкода:** не получено ❌"
-        
         await bot.send_message(chat_id=OPERATOR_GROUP_ID, text=ticket_text, message_thread_id=topic_id)
-        
-        if has_barcode and barcode_file_id:
-            await bot.send_photo(chat_id=OPERATOR_GROUP_ID, photo=barcode_file_id, message_thread_id=topic_id)
         
         await message.answer(
             f"✅ **Заявка создана!**\n📌 Номер тикета: `{topic_id}`\n\n👇 Нажмите **«На главную»**",
@@ -535,6 +575,7 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
 
 
 async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
+    """Создание тикета для вопроса"""
     data = await state.get_data()
     
     user_name = data.get('user_name')
