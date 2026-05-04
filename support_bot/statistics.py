@@ -61,7 +61,8 @@ async def get_weekly_statistics():
                             
                             date_key = created_at.strftime('%d.%m')
                             stats['by_date'][date_key] += 1
-                    except (ValueError, IndexError):
+                    except (ValueError, IndexError) as e:
+                        log.warning(f"Ошибка парсинга: {e}")
                         continue
         
         return stats
@@ -180,7 +181,20 @@ async def send_weekly_report_to_topic(bot, topic_id: int):
     Отправляет еженедельную сводку в указанный топик
     """
     try:
-        log.info(f"📊 Начинаем формирование еженедельного отчёта для топика {topic_id}")
+        log.info(f"📊 Начинаем формирование отчёта для топика {topic_id}")
+        log.info(f"📤 Параметры: GROUP_ID={OPERATOR_GROUP_ID}, TOPIC_ID={topic_id}")
+        
+        # Отправляем диагностическое сообщение
+        try:
+            await bot.send_message(
+                chat_id=OPERATOR_GROUP_ID,
+                text=f"🔍 Диагностика: формирую отчёт для топика {topic_id}",
+                message_thread_id=topic_id
+            )
+            log.info(f"✅ Диагностическое сообщение отправлено в топик {topic_id}")
+        except Exception as e:
+            log.error(f"❌ Диагностическое сообщение НЕ отправлено: {e}")
+            raise
         
         stats = await get_weekly_statistics()
         
@@ -224,16 +238,20 @@ async def send_weekly_report_to_topic(bot, topic_id: int):
             else:
                 report += "⚠️ **Обратите внимание!** Много заявок ожидают ответа.\n"
         
+        # Отправляем отчёт
+        log.info(f"📤 Отправка отчёта в топик {topic_id}")
         await bot.send_message(
             chat_id=OPERATOR_GROUP_ID,
             text=report,
             message_thread_id=topic_id,
             parse_mode="Markdown"
         )
-        log.info(f"✅ Еженедельная сводка отправлена в топик {topic_id}")
+        log.info(f"✅ Отчёт успешно отправлен в топик {topic_id}")
         
     except Exception as e:
-        log.error(f"❌ Ошибка при отправке сводки: {e}")
+        log.error(f"❌ Ошибка при отправке отчёта: {e}")
+        import traceback
+        log.error(traceback.format_exc())
         raise
 
 
