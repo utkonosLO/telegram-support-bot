@@ -1,8 +1,13 @@
 import os
+import logging
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-OPERATOR_GROUP_ID = -1003953605950  # Замените на ваш ID группы
+# Настройка логгера
+log = logging.getLogger(__name__)
+
+# ID группы и топика GENERAL
+OPERATOR_GROUP_ID = -1003953605950  # ЗАМЕНИТЕ НА ВАШ ID ГРУППЫ
 GENERAL_TOPIC_ID = 1  # ID общего топика (обычно 1)
 
 
@@ -13,6 +18,7 @@ async def get_weekly_statistics():
     try:
         file_path = '/app/data/tickets_info.txt'
         if not os.path.exists(file_path):
+            log.warning("Файл tickets_info.txt не существует")
             return None
         
         now = datetime.now()
@@ -37,7 +43,6 @@ async def get_weekly_statistics():
                 if len(parts) >= 4:
                     try:
                         created_at = datetime.fromisoformat(parts[3])
-                        # Только за последнюю неделю
                         if created_at >= week_ago:
                             stats['total'] += 1
                             ticket_type = parts[1]
@@ -55,15 +60,15 @@ async def get_weekly_statistics():
                             else:
                                 stats['unanswered'] += 1
                             
-                            # Статистика по дням
                             date_key = created_at.strftime('%d.%m')
                             stats['by_date'][date_key] += 1
-                    except (ValueError, IndexError):
+                    except (ValueError, IndexError) as e:
+                        log.warning(f"Ошибка парсинга строки: {e}")
                         continue
         
         return stats
     except Exception as e:
-        print(f"Ошибка сбора статистики: {e}")
+        log.error(f"Ошибка сбора статистики: {e}")
         return None
 
 
@@ -85,10 +90,10 @@ async def get_operators_stats():
                 if not line:
                     continue
                 parts = line.split('|')
-                if len(parts) >= 2:
+                if len(parts) >= 3:
                     try:
                         operator_id = parts[0]
-                        reply_time = datetime.fromisoformat(parts[1])
+                        reply_time = datetime.fromisoformat(parts[2])
                         if reply_time >= week_ago:
                             operators[operator_id] += 1
                     except (ValueError, IndexError):
@@ -96,7 +101,7 @@ async def get_operators_stats():
         
         return dict(operators)
     except Exception as e:
-        print(f"Ошибка сбора статистики операторов: {e}")
+        log.error(f"Ошибка сбора статистики операторов: {e}")
         return None
 
 
@@ -113,8 +118,9 @@ async def save_ticket_info(topic_id: int, ticket_type: str, user_id: int, user_n
         
         with open(file_path, 'a') as f:
             f.write(f"{topic_id}|{ticket_type}|unanswered|{created_at}|{user_id}|{user_name}\n")
+        log.info(f"✅ Сохранена информация о заявке {topic_id} (тип: {ticket_type})")
     except Exception as e:
-        print(f"Ошибка сохранения информации о заявке: {e}")
+        log.error(f"Ошибка сохранения информации о заявке: {e}")
 
 
 async def mark_ticket_as_answered(topic_id: int):
@@ -124,10 +130,12 @@ async def mark_ticket_as_answered(topic_id: int):
     try:
         file_path = '/app/data/tickets_info.txt'
         if not os.path.exists(file_path):
+            log.warning(f"Файл {file_path} не существует")
             return
         
-        # Читаем все заявки
         tickets = []
+        updated = False
+        
         with open(file_path, 'r') as f:
             for line in f:
                 line = line.strip()
@@ -135,19 +143,21 @@ async def mark_ticket_as_answered(topic_id: int):
                     continue
                 parts = line.split('|')
                 if len(parts) >= 4 and int(parts[0]) == topic_id:
-                    # Обновляем статус на 'answered'
-                    parts[2] = 'answered'
+                    if parts[2] != 'answered':
+                        parts[2] = 'answered'
+                        updated = True
                     tickets.append('|'.join(parts))
                 else:
                     tickets.append(line)
         
-        # Записываем обратно
-        with open(file_path, 'w') as f:
-            for ticket in tickets:
-                f.write(f"{ticket}\n")
+        if updated:
+            with open(file_path, 'w') as f:
+                for ticket in tickets:
+                    f.write(f"{ticket}\n")
+            log.info(f"✅ Заявка {topic_id} отмечена как отвеченная")
                 
     except Exception as e:
-        print(f"Ошибка обновления статуса: {e}")
+        log.error(f"Ошибка обновления статуса: {e}")
 
 
 async def save_operator_reply(operator_id: int, topic_id: int):
@@ -162,82 +172,119 @@ async def save_operator_reply(operator_id: int, topic_id: int):
         
         with open(file_path, 'a') as f:
             f.write(f"{operator_id}|{topic_id}|{reply_time}\n")
+        log.info(f"✅ Сохранён ответ оператора {operator_id} в топике {topic_id}")
     except Exception as e:
-        print(f"Ошибка сохранения ответа оператора: {e}")
+        log.error(f"Ошибка сохранения ответа оператора: {e}")
 
 
 async def send_weekly_report(bot):
     """
-    Отправляет еженедельную сводку в GENERAL топик
+    Отправляет еженедельную сводку в GENERAL топик (с отладкой)
     """
-    stats = await get_weekly_statistics()
-    
-    if not stats or stats['total'] == 0:
-        # Если за неделю не было заявок
-        report = "📊 **Еженедельная сводка**\n\n"
-        report += f"📅 **Неделя:** {datetime.now().strftime('%d.%m.%Y')}\n\n"
-        report += "✨ За прошедшую неделю не было ни одной заявки.\n"
-        report += "🥳 Отличная работа!"
-    else:
-        now = datetime.now()
-        week_start = (now - timedelta(days=7)).strftime('%d.%m.%Y')
-        week_end = now.strftime('%d.%m.%Y')
-        
-        report = "📊 **Еженедельная сводка**\n\n"
-        report += f"📅 **Период:** {week_start} – {week_end}\n\n"
-        
-        # Общая статистика
-        report += f"📌 **Всего заявок:** {stats['total']}\n\n"
-        
-        # Статистика по категориям
-        report += "📂 **По категориям:**\n"
-        report += f"   📸 Некорректное фото: {stats['photo']}\n"
-        report += f"   ✍️ Некорректные атрибуты: {stats['attributes']}\n"
-        report += f"   ❓ Вопросы: {stats['other']}\n\n"
-        
-        # Статистика по статусам
-        report += "📊 **По статусам:**\n"
-        report += f"   ✅ Отвечено: {stats['answered']}\n"
-        report += f"   ⏳ Ожидают ответа: {stats['unanswered']}\n\n"
-        
-        # Процент выполнения
-        if stats['total'] > 0:
-            percent = (stats['answered'] / stats['total']) * 100
-            report += f"📈 **Процент отвеченных:** {percent:.1f}%\n\n"
-        
-        # Статистика по дням
-        if stats['by_date']:
-            report += "📅 **По дням:**\n"
-            for date in sorted(stats['by_date'].keys()):
-                report += f"   • {date}: {stats['by_date'][date]} заявок\n"
-            report += "\n"
-        
-        # Статистика по операторам
-        operators_stats = await get_operators_stats()
-        if operators_stats:
-            report += "👥 **Активность операторов:**\n"
-            # Сортируем по количеству ответов
-            sorted_ops = sorted(operators_stats.items(), key=lambda x: x[1], reverse=True)
-            for op_id, count in sorted_ops[:5]:  # Топ-5
-                report += f"   • Оператор `{op_id}`: {count} ответов\n"
-            report += "\n"
-        
-        # Оценка работы
-        if stats['answered'] == stats['total'] and stats['total'] > 0:
-            report += "🏆 **Отлично! Все заявки обработаны!**\n"
-        elif stats['answered'] / stats['total'] > 0.7 if stats['total'] > 0 else False:
-            report += "👍 **Хороший результат!** Но есть ещё заявки в работе.\n"
-        else:
-            report += "⚠️ **Обратите внимание!** Много заявок ожидают ответа.\n"
-    
-    # Отправляем в GENERAL топик
     try:
+        log.info("📊 Начинаем формирование еженедельного отчёта...")
+        log.info(f"📤 Параметры отправки: GROUP_ID={OPERATOR_GROUP_ID}, TOPIC_ID={GENERAL_TOPIC_ID}")
+        
+        # Сначала отправляем тестовое сообщение для проверки связи
+        test_message = "🔍 **Тестовое сообщение от бота**\n\nЕсли вы видите это сообщение, значит бот может отправлять сообщения в общий топик."
+        
+        await bot.send_message(
+            chat_id=OPERATOR_GROUP_ID,
+            text=test_message,
+            message_thread_id=GENERAL_TOPIC_ID,
+            parse_mode="Markdown"
+        )
+        log.info("✅ Тестовое сообщение отправлено в GENERAL топик")
+        
+        # Получаем статистику
+        stats = await get_weekly_statistics()
+        
+        # Формируем отчёт
+        if not stats or stats['total'] == 0:
+            report = "📊 **Еженедельная сводка**\n\n"
+            report += f"📅 **Неделя:** {datetime.now().strftime('%d.%m.%Y')}\n\n"
+            report += "✨ За прошедшую неделю не было ни одной заявки.\n"
+            report += "🥳 Отличная работа!"
+            log.info("📊 Статистика пуста, отправляем уведомление об отсутствии заявок")
+        else:
+            now = datetime.now()
+            week_start = (now - timedelta(days=7)).strftime('%d.%m.%Y')
+            week_end = now.strftime('%d.%m.%Y')
+            
+            report = "📊 **Еженедельная сводка**\n\n"
+            report += f"📅 **Период:** {week_start} – {week_end}\n\n"
+            
+            report += f"📌 **Всего заявок:** {stats['total']}\n\n"
+            
+            report += "📂 **По категориям:**\n"
+            report += f"   📸 Некорректное фото: {stats['photo']}\n"
+            report += f"   ✍️ Некорректные атрибуты: {stats['attributes']}\n"
+            report += f"   ❓ Вопросы: {stats['other']}\n\n"
+            
+            report += "📊 **По статусам:**\n"
+            report += f"   ✅ Отвечено: {stats['answered']}\n"
+            report += f"   ⏳ Ожидают ответа: {stats['unanswered']}\n\n"
+            
+            if stats['total'] > 0:
+                percent = (stats['answered'] / stats['total']) * 100
+                report += f"📈 **Процент отвеченных:** {percent:.1f}%\n\n"
+            
+            if stats['by_date']:
+                report += "📅 **По дням:**\n"
+                for date in sorted(stats['by_date'].keys()):
+                    report += f"   • {date}: {stats['by_date'][date]} заявок\n"
+                report += "\n"
+            
+            operators_stats = await get_operators_stats()
+            if operators_stats:
+                report += "👥 **Активность операторов:**\n"
+                sorted_ops = sorted(operators_stats.items(), key=lambda x: x[1], reverse=True)
+                for op_id, count in sorted_ops[:5]:
+                    report += f"   • Оператор `{op_id}`: {count} ответов\n"
+                report += "\n"
+            
+            if stats['answered'] == stats['total'] and stats['total'] > 0:
+                report += "🏆 **Отлично! Все заявки обработаны!**\n"
+            elif stats['answered'] / stats['total'] > 0.7 if stats['total'] > 0 else False:
+                report += "👍 **Хороший результат!** Но есть ещё заявки в работе.\n"
+            else:
+                report += "⚠️ **Обратите внимание!** Много заявок ожидают ответа.\n"
+        
+        # Отправляем основной отчёт
         await bot.send_message(
             chat_id=OPERATOR_GROUP_ID,
             text=report,
             message_thread_id=GENERAL_TOPIC_ID,
             parse_mode="Markdown"
         )
-        print(f"Еженедельная сводка отправлена в GENERAL топик")
+        log.info("✅ Еженедельная сводка успешно отправлена в GENERAL топик")
+        
     except Exception as e:
-        print(f"Ошибка отправки сводки: {e}")
+        log.error(f"❌ Ошибка при отправке сводки: {e}")
+        import traceback
+        log.error(traceback.format_exc())
+
+
+async def send_test_report(bot):
+    """
+    Упрощённая тестовая отправка (только для диагностики)
+    """
+    try:
+        test_message = (
+            "📊 **ТЕСТОВЫЙ ОТЧЁТ**\n\n"
+            "Если вы видите это сообщение, значит бот может отправлять сообщения в общий топик.\n"
+            "Теперь нужно настроить сбор статистики."
+        )
+        
+        await bot.send_message(
+            chat_id=OPERATOR_GROUP_ID,
+            text=test_message,
+            message_thread_id=GENERAL_TOPIC_ID,
+            parse_mode="Markdown"
+        )
+        log.info("✅ Тестовое сообщение отправлено в GENERAL топик")
+        return True
+        
+    except Exception as e:
+        log.error(f"❌ Ошибка при тестовой отправке: {e}")
+        return False
