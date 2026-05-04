@@ -6,7 +6,7 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
-from support_bot.statistics import mark_ticket_as_answered, save_operator_reply
+from support_bot.statistics import mark_ticket_as_answered, save_operator_reply, send_weekly_report
 
 router = Router()
 log = logging.getLogger(__name__)
@@ -250,6 +250,23 @@ async def close_ticket_command(message: Message, bot: Bot):
         await message.answer("❌ **Не удалось закрыть тикет.** Попробуйте позже.")
 
 
+@router.message(F.chat.type == "supergroup", F.text.lower() == "/report")
+async def send_report_now(message: Message, bot: Bot):
+    """
+    Отправляет еженедельный отчёт немедленно (команда /report)
+    """
+    await message.answer("📊 **Формирую отчёт...** Пожалуйста, подождите.")
+    
+    try:
+        await send_weekly_report(bot)
+        await message.answer("✅ **Отчёт успешно отправлен в GENERAL топик!**")
+        log.info(f"Оператор {message.from_user.id} запросил отчёт через /report")
+    except Exception as e:
+        error_text = f"❌ **Ошибка при отправке отчёта:** {e}"
+        await message.answer(error_text)
+        log.error(f"Ошибка при отправке отчёта по запросу: {e}")
+
+
 @router.message(F.chat.type == "supergroup", F.text.lower() == "/help")
 async def operator_help(message: Message):
     """
@@ -259,6 +276,7 @@ async def operator_help(message: Message):
         "🤖 **Справка для операторов**\n\n"
         "📌 **Основные команды:**\n"
         "• `/close` - закрыть текущий тикет\n"
+        "• `/report` - отправить еженедельный отчёт немедленно\n"
         "• `/help` - показать эту справку\n\n"
         "📌 **Как отвечать пользователям:**\n"
         "• Найдите **сообщение пользователя** в топике\n"
@@ -277,6 +295,7 @@ async def operator_help(message: Message):
         "• Не отвечайте на системные сообщения о создании топика\n"
         "• Если пользователь не получает ответ - попросите его написать любое сообщение боту\n\n"
         "📊 **Статистика:**\n"
-        "• Каждый понедельник в 10:00 приходит еженедельная сводка в GENERAL топик"
+        "• Каждый понедельник в 10:00 приходит автоматическая сводка\n"
+        "• В любой момент можно запросить отчёт командой `/report`"
     )
     await message.answer(help_text, parse_mode="HTML")
