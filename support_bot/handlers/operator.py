@@ -9,10 +9,9 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from support_bot.statistics import (
     mark_ticket_as_answered, 
     save_operator_reply, 
-    send_weekly_report,
-    OPERATOR_GROUP_ID,
-    GENERAL_TOPIC_ID,
-    get_weekly_statistics
+    send_weekly_report_to_topic,
+    get_weekly_statistics,
+    OPERATOR_GROUP_ID
 )
 
 router = Router()
@@ -199,7 +198,6 @@ async def operator_reply_handler(message: Message, bot: Bot):
         await mark_ticket_as_answered(topic_id)
         await save_operator_reply(operator_id, topic_id)
         
-        # Изменение цвета топика временно отключено из-за ограничений API
     else:
         log.error(f"❌ Не удалось доставить сообщение пользователю {user_id}")
         
@@ -260,18 +258,24 @@ async def close_ticket_command(message: Message, bot: Bot):
 @router.message(F.chat.type == "supergroup", F.text.lower() == "/report")
 async def send_report_now(message: Message, bot: Bot):
     """
-    Отправляет еженедельный отчёт немедленно (команда /report)
+    Отправляет еженедельный отчёт в ТЕКУЩИЙ ТОПИК (где была вызвана команда)
     """
+    current_topic_id = message.message_thread_id
+    
+    if not current_topic_id:
+        await message.answer("❌ **Ошибка:** Команда должна быть вызвана внутри топика!")
+        return
+    
     await message.answer("📊 **Формирую отчёт...** Пожалуйста, подождите.")
     
     try:
-        await send_weekly_report(bot)
-        await message.answer("✅ **Отчёт успешно отправлен в GENERAL топик!**")
-        log.info(f"Оператор {message.from_user.id} запросил отчёт через /report")
+        await send_weekly_report_to_topic(bot, current_topic_id)
+        await message.answer("✅ **Отчёт успешно отправлен в текущий топик!**")
+        log.info(f"Оператор {message.from_user.id} запросил отчёт в топик {current_topic_id}")
     except Exception as e:
         error_text = f"❌ **Ошибка при отправке отчёта:** {e}"
         await message.answer(error_text)
-        log.error(f"Ошибка при отправке отчёта по запросу: {e}")
+        log.error(f"Ошибка при отправке отчёта: {e}")
 
 
 @router.message(F.chat.type == "supergroup", F.text.lower() == "/debug")
@@ -281,7 +285,6 @@ async def debug_report(message: Message, bot: Bot):
     """
     debug_info = f"🔍 **Диагностика отправки:**\n\n"
     debug_info += f"📌 ID группы (конфиг): `{OPERATOR_GROUP_ID}`\n"
-    debug_info += f"📌 ID GENERAL топика: `{GENERAL_TOPIC_ID}`\n"
     debug_info += f"📌 Текущий чат ID: `{message.chat.id}`\n"
     debug_info += f"📌 Текущий топик ID: `{message.message_thread_id}`\n\n"
     
@@ -302,23 +305,9 @@ async def debug_report(message: Message, bot: Bot):
         debug_info += f"2. Оператор должен ответить на неё\n"
         debug_info += f"3. После этого отправьте /report снова\n\n"
     
-    # Пробуем отправить тестовое сообщение напрямую в GENERAL топик
-    try:
-        await bot.send_message(
-            chat_id=OPERATOR_GROUP_ID,
-            text="🔍 **Тестовое сообщение от бота** (проверка связи с GENERAL топиком)",
-            message_thread_id=GENERAL_TOPIC_ID
-        )
-        debug_info += f"✅ **Тестовое сообщение отправлено в GENERAL топик**\n"
-        debug_info += f"   Проверьте топик https://t.me/LO_Content/1\n"
-    except Exception as e:
-        debug_info += f"❌ **Ошибка при отправке в GENERAL топик:**\n"
-        debug_info += f"   `{e}`\n"
-    
     # Проверяем наличие файлов данных
-    debug_info += f"\n📁 **Файлы данных:**\n"
+    debug_info += f"📁 **Файлы данных:**\n"
     
-    import os
     files_to_check = [
         '/app/data/topic_links.txt',
         '/app/data/tickets_info.txt',
@@ -335,23 +324,6 @@ async def debug_report(message: Message, bot: Bot):
     await message.answer(debug_info)
 
 
-@router.message(F.chat.type == "supergroup", F.text.lower() == "/test")
-async def test_general_topic(message: Message, bot: Bot):
-    """
-    Тестовая команда для проверки отправки в GENERAL топик
-    """
-    from support_bot.statistics import send_test_report
-    
-    await message.answer("🔍 **Тест отправки в GENERAL топик...**")
-    
-    result = await send_test_report(bot)
-    
-    if result:
-        await message.answer("✅ **Тестовое сообщение отправлено!** Проверьте GENERAL топик: https://t.me/LO_Content/1")
-    else:
-        await message.answer("❌ **Ошибка!** Не удалось отправить сообщение. Проверьте логи.")
-
-
 @router.message(F.chat.type == "supergroup", F.text.lower() == "/help")
 async def operator_help(message: Message):
     """
@@ -361,9 +333,8 @@ async def operator_help(message: Message):
         "🤖 **Справка для операторов**\n\n"
         "📌 **Основные команды:**\n"
         "• `/close` - закрыть текущий тикет\n"
-        "• `/report` - отправить еженедельный отчёт немедленно\n"
+        "• `/report` - отправить еженедельный отчёт в текущий топик\n"
         "• `/debug` - диагностика отправки отчётов\n"
-        "• `/test` - тестовая отправка в GENERAL топик\n"
         "• `/help` - показать эту справку\n\n"
         "📌 **Как отвечать пользователям:**\n"
         "• Найдите **сообщение пользователя** в топике\n"
@@ -382,8 +353,7 @@ async def operator_help(message: Message):
         "• Не отвечайте на системные сообщения о создании топика\n"
         "• Если пользователь не получает ответ - попросите его написать любое сообщение боту\n\n"
         "📊 **Статистика:**\n"
-        "• Каждый понедельник в 10:00 приходит автоматическая сводка\n"
-        "• В любой момент можно запросить отчёт командой `/report`\n"
-        "• Для диагностики используйте `/debug`"
+        "• Используйте `/report` в любом топике для получения отчёта\n"
+        "• Отчёт будет отправлен в тот же топик, где была вызвана команда"
     )
     await message.answer(help_text, parse_mode="HTML")
