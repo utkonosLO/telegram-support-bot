@@ -6,9 +6,8 @@ from collections import defaultdict
 # Настройка логгера
 log = logging.getLogger(__name__)
 
-# ID группы и топика GENERAL
+# ID группы
 OPERATOR_GROUP_ID = -1003953605950  # ЗАМЕНИТЕ НА ВАШ ID ГРУППЫ
-GENERAL_TOPIC_ID = 1  # ID общего топика (обычно 1)
 
 
 async def get_weekly_statistics():
@@ -62,8 +61,7 @@ async def get_weekly_statistics():
                             
                             date_key = created_at.strftime('%d.%m')
                             stats['by_date'][date_key] += 1
-                    except (ValueError, IndexError) as e:
-                        log.warning(f"Ошибка парсинга строки: {e}")
+                    except (ValueError, IndexError):
                         continue
         
         return stats
@@ -177,35 +175,20 @@ async def save_operator_reply(operator_id: int, topic_id: int):
         log.error(f"Ошибка сохранения ответа оператора: {e}")
 
 
-async def send_weekly_report(bot):
+async def send_weekly_report_to_topic(bot, topic_id: int):
     """
-    Отправляет еженедельную сводку в GENERAL топик (с отладкой)
+    Отправляет еженедельную сводку в указанный топик
     """
     try:
-        log.info("📊 Начинаем формирование еженедельного отчёта...")
-        log.info(f"📤 Параметры отправки: GROUP_ID={OPERATOR_GROUP_ID}, TOPIC_ID={GENERAL_TOPIC_ID}")
+        log.info(f"📊 Начинаем формирование еженедельного отчёта для топика {topic_id}")
         
-        # Сначала отправляем тестовое сообщение для проверки связи
-        test_message = "🔍 **Тестовое сообщение от бота**\n\nЕсли вы видите это сообщение, значит бот может отправлять сообщения в общий топик."
-        
-        await bot.send_message(
-            chat_id=OPERATOR_GROUP_ID,
-            text=test_message,
-            message_thread_id=GENERAL_TOPIC_ID,
-            parse_mode="Markdown"
-        )
-        log.info("✅ Тестовое сообщение отправлено в GENERAL топик")
-        
-        # Получаем статистику
         stats = await get_weekly_statistics()
         
-        # Формируем отчёт
         if not stats or stats['total'] == 0:
             report = "📊 **Еженедельная сводка**\n\n"
             report += f"📅 **Неделя:** {datetime.now().strftime('%d.%m.%Y')}\n\n"
             report += "✨ За прошедшую неделю не было ни одной заявки.\n"
             report += "🥳 Отличная работа!"
-            log.info("📊 Статистика пуста, отправляем уведомление об отсутствии заявок")
         else:
             now = datetime.now()
             week_start = (now - timedelta(days=7)).strftime('%d.%m.%Y')
@@ -213,14 +196,11 @@ async def send_weekly_report(bot):
             
             report = "📊 **Еженедельная сводка**\n\n"
             report += f"📅 **Период:** {week_start} – {week_end}\n\n"
-            
             report += f"📌 **Всего заявок:** {stats['total']}\n\n"
-            
             report += "📂 **По категориям:**\n"
             report += f"   📸 Некорректное фото: {stats['photo']}\n"
             report += f"   ✍️ Некорректные атрибуты: {stats['attributes']}\n"
             report += f"   ❓ Вопросы: {stats['other']}\n\n"
-            
             report += "📊 **По статусам:**\n"
             report += f"   ✅ Отвечено: {stats['answered']}\n"
             report += f"   ⏳ Ожидают ответа: {stats['unanswered']}\n\n"
@@ -228,12 +208,6 @@ async def send_weekly_report(bot):
             if stats['total'] > 0:
                 percent = (stats['answered'] / stats['total']) * 100
                 report += f"📈 **Процент отвеченных:** {percent:.1f}%\n\n"
-            
-            if stats['by_date']:
-                report += "📅 **По дням:**\n"
-                for date in sorted(stats['by_date'].keys()):
-                    report += f"   • {date}: {stats['by_date'][date]} заявок\n"
-                report += "\n"
             
             operators_stats = await get_operators_stats()
             if operators_stats:
@@ -250,19 +224,24 @@ async def send_weekly_report(bot):
             else:
                 report += "⚠️ **Обратите внимание!** Много заявок ожидают ответа.\n"
         
-        # Отправляем основной отчёт
         await bot.send_message(
             chat_id=OPERATOR_GROUP_ID,
             text=report,
-            message_thread_id=GENERAL_TOPIC_ID,
+            message_thread_id=topic_id,
             parse_mode="Markdown"
         )
-        log.info("✅ Еженедельная сводка успешно отправлена в GENERAL топик")
+        log.info(f"✅ Еженедельная сводка отправлена в топик {topic_id}")
         
     except Exception as e:
         log.error(f"❌ Ошибка при отправке сводки: {e}")
-        import traceback
-        log.error(traceback.format_exc())
+        raise
+
+
+async def send_weekly_report(bot):
+    """
+    Отправляет еженедельную сводку в GENERAL топик (для совместимости)
+    """
+    await send_weekly_report_to_topic(bot, 1)
 
 
 async def send_test_report(bot):
@@ -272,14 +251,14 @@ async def send_test_report(bot):
     try:
         test_message = (
             "📊 **ТЕСТОВЫЙ ОТЧЁТ**\n\n"
-            "Если вы видите это сообщение, значит бот может отправлять сообщения в общий топик.\n"
-            "Теперь нужно настроить сбор статистики."
+            "Если вы видите это сообщение, значит бот может отправлять сообщения в этот топик.\n"
+            "Теперь можно использовать команду /report для получения полной статистики."
         )
         
         await bot.send_message(
             chat_id=OPERATOR_GROUP_ID,
             text=test_message,
-            message_thread_id=GENERAL_TOPIC_ID,
+            message_thread_id=1,
             parse_mode="Markdown"
         )
         log.info("✅ Тестовое сообщение отправлено в GENERAL топик")
