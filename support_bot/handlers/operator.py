@@ -6,6 +6,8 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
+from support_bot.statistics import mark_ticket_as_answered, save_operator_reply
+
 router = Router()
 log = logging.getLogger(__name__)
 
@@ -185,9 +187,12 @@ async def operator_reply_handler(message: Message, bot: Bot):
     # Обработка результата
     if success:
         log.info(f"✅ Сообщение успешно доставлено пользователю {user_id}")
+        
+        # Отмечаем заявку как отвеченную для статистики
+        await mark_ticket_as_answered(topic_id)
+        await save_operator_reply(operator_id, topic_id)
+        
         # Изменение цвета топика временно отключено из-за ограничений API
-        # Цвет топика можно менять только у супергрупп с включёнными темами,
-        # но в некоторых версиях API этот параметр не поддерживается
     else:
         log.error(f"❌ Не удалось доставить сообщение пользователю {user_id}")
         
@@ -270,6 +275,8 @@ async def operator_help(message: Message):
         "📌 **Важно:**\n"
         "• Отвечайте ТОЛЬКО на сообщения пользователя\n"
         "• Не отвечайте на системные сообщения о создании топика\n"
-        "• Если пользователь не получает ответ - попросите его написать любое сообщение боту"
+        "• Если пользователь не получает ответ - попросите его написать любое сообщение боту\n\n"
+        "📊 **Статистика:**\n"
+        "• Каждый понедельник в 10:00 приходит еженедельная сводка в GENERAL топик"
     )
     await message.answer(help_text, parse_mode="HTML")
