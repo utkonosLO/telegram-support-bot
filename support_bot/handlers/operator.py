@@ -258,24 +258,34 @@ async def close_ticket_command(message: Message, bot: Bot):
 @router.message(F.chat.type == "supergroup", F.text.lower() == "/report")
 async def send_report_now(message: Message, bot: Bot):
     """
-    Отправляет еженедельный отчёт в ТЕКУЩИЙ ТОПИК (где была вызвана команда)
+    Отправляет отчёт:
+    - если команда вызвана внутри топика → отправляет в этот топик
+    - если в общем чате → отправляет в GENERAL топик (ID=1)
     """
+    from support_bot.statistics import send_weekly_report_to_topic
+    
     current_topic_id = message.message_thread_id
     
-    if not current_topic_id:
-        await message.answer("❌ **Ошибка:** Команда должна быть вызвана внутри топика!")
-        return
-    
-    await message.answer("📊 **Формирую отчёт...** Пожалуйста, подождите.")
-    
-    try:
-        await send_weekly_report_to_topic(bot, current_topic_id)
-        await message.answer("✅ **Отчёт успешно отправлен в текущий топик!**")
-        log.info(f"Оператор {message.from_user.id} запросил отчёт в топик {current_topic_id}")
-    except Exception as e:
-        error_text = f"❌ **Ошибка при отправке отчёта:** {e}"
-        await message.answer(error_text)
-        log.error(f"Ошибка при отправке отчёта: {e}")
+    if current_topic_id:
+        # Команда вызвана внутри топика
+        await message.answer("📊 **Формирую отчёт для этого топика...** Пожалуйста, подождите.")
+        try:
+            await send_weekly_report_to_topic(bot, current_topic_id)
+            await message.answer("✅ **Отчёт успешно отправлен в текущий топик!**")
+            log.info(f"Оператор {message.from_user.id} запросил отчёт в топик {current_topic_id}")
+        except Exception as e:
+            await message.answer(f"❌ **Ошибка при отправке отчёта:** {e}")
+            log.error(f"Ошибка при отправке отчёта: {e}")
+    else:
+        # Команда вызвана в общем чате — отправляем в GENERAL топик (ID=1)
+        await message.answer("📊 **Формирую отчёт для GENERAL топика...** Пожалуйста, подождите.")
+        try:
+            await send_weekly_report_to_topic(bot, 1)
+            await message.answer("✅ **Отчёт успешно отправлен в GENERAL топик!**")
+            log.info(f"Оператор {message.from_user.id} запросил отчёт в GENERAL топик")
+        except Exception as e:
+            await message.answer(f"❌ **Ошибка при отправке отчёта в GENERAL топик:** {e}")
+            log.error(f"Ошибка при отправке отчёта в GENERAL: {e}")
 
 
 @router.message(F.chat.type == "supergroup", F.text.lower() == "/debug")
@@ -333,7 +343,9 @@ async def operator_help(message: Message):
         "🤖 **Справка для операторов**\n\n"
         "📌 **Основные команды:**\n"
         "• `/close` - закрыть текущий тикет\n"
-        "• `/report` - отправить еженедельный отчёт в текущий топик\n"
+        "• `/report` - отправить еженедельный отчёт\n"
+        "   - внутри топика → отчёт в этот топик\n"
+        "   - в общем чате → отчёт в GENERAL топик\n"
         "• `/debug` - диагностика отправки отчётов\n"
         "• `/help` - показать эту справку\n\n"
         "📌 **Как отвечать пользователям:**\n"
@@ -350,10 +362,9 @@ async def operator_help(message: Message):
         "• Аудио\n\n"
         "📌 **Важно:**\n"
         "• Отвечайте ТОЛЬКО на сообщения пользователя\n"
-        "• Не отвечайте на системные сообщения о создании топика\n"
-        "• Если пользователь не получает ответ - попросите его написать любое сообщение боту\n\n"
+        "• Не отвечайте на системные сообщения о создании топика\n\n"
         "📊 **Статистика:**\n"
-        "• Используйте `/report` в любом топике для получения отчёта\n"
-        "• Отчёт будет отправлен в тот же топик, где была вызвана команда"
+        "• Используйте `/report` для получения еженедельной сводки\n"
+        "• Отчёт показывает количество заявок по категориям и статусам"
     )
     await message.answer(help_text, parse_mode="HTML")
