@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timedelta
 
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
@@ -15,6 +16,32 @@ from support_bot.handlers.operator import router as operator_router
 from support_bot.handlers.user import router as user_router
 from support_bot.handlers.ticket_form import router as ticket_form_router
 from support_bot.topic_manager import TopicManager
+from support_bot.statistics import send_weekly_report
+
+
+async def weekly_report_scheduler(bot: Bot):
+    """
+    Запускает отправку отчёта каждый понедельник в 10:00
+    """
+    while True:
+        now = datetime.now()
+        # Вычисляем следующий понедельник 10:00
+        days_until_monday = (7 - now.weekday()) % 7
+        
+        if days_until_monday == 0 and now.hour < 10:
+            # Сегодня понедельник, но ещё не 10 утра
+            next_run = now.replace(hour=10, minute=0, second=0, microsecond=0)
+        elif days_until_monday == 0 and now.hour >= 10:
+            # Сегодня понедельник, но уже после 10 — ждём следующую неделю
+            next_run = now.replace(hour=10, minute=0, second=0, microsecond=0) + timedelta(days=7)
+        else:
+            next_run = (now + timedelta(days=days_until_monday)).replace(hour=10, minute=0, second=0, microsecond=0)
+        
+        wait_seconds = (next_run - now).total_seconds()
+        log.info(f"⏰ Следующий еженедельный отчёт через {wait_seconds / 3600:.1f} часов")
+        await asyncio.sleep(wait_seconds)
+        
+        await send_weekly_report(bot)
 
 
 async def _run() -> None:
@@ -69,6 +96,10 @@ async def _run() -> None:
         me = await bot.get_me()
         log.info("Бот запущен: @%s (id=%s)", me.username, me.id)
         log.info("Группа операторов: %s", config.operator_group_id)
+
+        # Запускаем планировщик еженедельных отчётов
+        asyncio.create_task(weekly_report_scheduler(bot))
+        log.info("📊 Планировщик еженедельных отчётов запущен (каждый понедельник в 10:00)")
 
         # Запускаем polling с правильными allowed_updates
         await dp.start_polling(
