@@ -18,6 +18,9 @@ from support_bot.handlers.ticket_form import router as ticket_form_router
 from support_bot.topic_manager import TopicManager
 from support_bot.statistics import send_weekly_report
 
+# Создаём логгер для модуля
+log = logging.getLogger("support_bot")
+
 
 async def weekly_report_scheduler(bot: Bot):
     """
@@ -41,7 +44,11 @@ async def weekly_report_scheduler(bot: Bot):
         log.info(f"⏰ Следующий еженедельный отчёт через {wait_seconds / 3600:.1f} часов")
         await asyncio.sleep(wait_seconds)
         
-        await send_weekly_report(bot)
+        try:
+            await send_weekly_report(bot)
+            log.info("✅ Еженедельный отчёт успешно отправлен")
+        except Exception as e:
+            log.error(f"❌ Ошибка при отправке еженедельного отчёта: {e}")
 
 
 async def _run() -> None:
@@ -52,7 +59,9 @@ async def _run() -> None:
         level=getattr(logging, config.log_level.upper(), logging.INFO),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
-    log = logging.getLogger("support_bot")
+    
+    # Логгер уже создан в глобальной области, просто используем его
+    log.info("Запуск бота...")
 
     db: Database | None = None
     bot: Bot | None = None
