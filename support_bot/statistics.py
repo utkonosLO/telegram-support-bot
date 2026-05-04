@@ -61,8 +61,7 @@ async def get_weekly_statistics():
                             
                             date_key = created_at.strftime('%d.%m')
                             stats['by_date'][date_key] += 1
-                    except (ValueError, IndexError) as e:
-                        log.warning(f"Ошибка парсинга: {e}")
+                    except (ValueError, IndexError):
                         continue
         
         return stats
@@ -179,25 +178,15 @@ async def save_operator_reply(operator_id: int, topic_id: int):
 async def send_weekly_report_to_topic(bot, topic_id: int):
     """
     Отправляет еженедельную сводку в указанный топик
+    Для GENERAL топика (ID=1) НЕ передаёт message_thread_id
     """
     try:
         log.info(f"📊 Начинаем формирование отчёта для топика {topic_id}")
-        log.info(f"📤 Параметры: GROUP_ID={OPERATOR_GROUP_ID}, TOPIC_ID={topic_id}")
         
-        # Отправляем диагностическое сообщение
-        try:
-            await bot.send_message(
-                chat_id=OPERATOR_GROUP_ID,
-                text=f"🔍 Диагностика: формирую отчёт для топика {topic_id}",
-                message_thread_id=topic_id
-            )
-            log.info(f"✅ Диагностическое сообщение отправлено в топик {topic_id}")
-        except Exception as e:
-            log.error(f"❌ Диагностическое сообщение НЕ отправлено: {e}")
-            raise
-        
+        # Получаем статистику
         stats = await get_weekly_statistics()
         
+        # Формируем текст отчёта
         if not stats or stats['total'] == 0:
             report = "📊 **Еженедельная сводка**\n\n"
             report += f"📅 **Неделя:** {datetime.now().strftime('%d.%m.%Y')}\n\n"
@@ -238,26 +227,33 @@ async def send_weekly_report_to_topic(bot, topic_id: int):
             else:
                 report += "⚠️ **Обратите внимание!** Много заявок ожидают ответа.\n"
         
-        # Отправляем отчёт
-        log.info(f"📤 Отправка отчёта в топик {topic_id}")
-        await bot.send_message(
-            chat_id=OPERATOR_GROUP_ID,
-            text=report,
-            message_thread_id=topic_id,
-            parse_mode="Markdown"
-        )
-        log.info(f"✅ Отчёт успешно отправлен в топик {topic_id}")
+        # ========== ГЛАВНОЕ ИСПРАВЛЕНИЕ ==========
+        # Для GENERAL топика (ID=1) НЕ передаём message_thread_id
+        if topic_id == 1:
+            await bot.send_message(
+                chat_id=OPERATOR_GROUP_ID,
+                text=report,
+                parse_mode="Markdown"
+            )
+            log.info(f"✅ Отчёт отправлен в GENERAL топик (без message_thread_id)")
+        else:
+            await bot.send_message(
+                chat_id=OPERATOR_GROUP_ID,
+                text=report,
+                message_thread_id=topic_id,
+                parse_mode="Markdown"
+            )
+            log.info(f"✅ Отчёт отправлен в топик {topic_id}")
+        # ========================================
         
     except Exception as e:
         log.error(f"❌ Ошибка при отправке отчёта: {e}")
-        import traceback
-        log.error(traceback.format_exc())
         raise
 
 
 async def send_weekly_report(bot):
     """
-    Отправляет еженедельную сводку в GENERAL топик (для совместимости)
+    Отправляет еженедельную сводку в GENERAL топик (для совместимости с планировщиком)
     """
     await send_weekly_report_to_topic(bot, 1)
 
@@ -276,7 +272,6 @@ async def send_test_report(bot):
         await bot.send_message(
             chat_id=OPERATOR_GROUP_ID,
             text=test_message,
-            message_thread_id=1,
             parse_mode="Markdown"
         )
         log.info("✅ Тестовое сообщение отправлено в GENERAL топик")
