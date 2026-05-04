@@ -16,15 +16,36 @@ from support_bot.handlers.operator import router as operator_router
 from support_bot.handlers.user import router as user_router
 from support_bot.handlers.ticket_form import router as ticket_form_router
 from support_bot.topic_manager import TopicManager
-from support_bot.statistics import send_weekly_report
+from support_bot.statistics import send_daily_report, send_weekly_report
 
-# Создаём логгер для модуля
+# Создаём логгер
 log = logging.getLogger("support_bot")
+
+
+async def daily_report_scheduler(bot: Bot):
+    """
+    Запускает отправку ежедневного отчёта каждый день в 09:00
+    """
+    while True:
+        now = datetime.now()
+        next_run = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        if now >= next_run:
+            next_run = next_run + timedelta(days=1)
+        
+        wait_seconds = (next_run - now).total_seconds()
+        log.info(f"⏰ Следующий ежедневный отчёт через {wait_seconds / 3600:.1f} часов")
+        await asyncio.sleep(wait_seconds)
+        
+        try:
+            await send_daily_report(bot)
+            log.info("✅ Ежедневный отчёт успешно отправлен")
+        except Exception as e:
+            log.error(f"❌ Ошибка при отправке ежедневного отчёта: {e}")
 
 
 async def weekly_report_scheduler(bot: Bot):
     """
-    Запускает отправку отчёта каждый понедельник в 10:00
+    Запускает отправку еженедельного отчёта каждый понедельник в 10:00
     """
     while True:
         now = datetime.now()
@@ -60,7 +81,6 @@ async def _run() -> None:
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    # Логгер уже создан в глобальной области, просто используем его
     log.info("Запуск бота...")
 
     db: Database | None = None
@@ -106,9 +126,12 @@ async def _run() -> None:
         log.info("Бот запущен: @%s (id=%s)", me.username, me.id)
         log.info("Группа операторов: %s", config.operator_group_id)
 
-        # Запускаем планировщик еженедельных отчётов
+        # Запускаем планировщики отчётов
+        asyncio.create_task(daily_report_scheduler(bot))
         asyncio.create_task(weekly_report_scheduler(bot))
-        log.info("📊 Планировщик еженедельных отчётов запущен (каждый понедельник в 10:00)")
+        log.info("📊 Планировщики отчётов запущены:")
+        log.info("   • Ежедневный отчёт — каждый день в 09:00")
+        log.info("   • Еженедельный отчёт — каждый понедельник в 10:00")
 
         # Запускаем polling с правильными allowed_updates
         await dp.start_polling(
