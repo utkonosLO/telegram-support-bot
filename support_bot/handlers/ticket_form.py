@@ -16,8 +16,8 @@ class TicketForm(StatesGroup):
     waiting_for_photo_action = State()
     waiting_for_sku = State()
     waiting_for_comment = State()
-    waiting_for_packaging_photo = State()      # НОВОЕ: фото упаковки
-    waiting_for_barcode_photo = State()        # НОВОЕ: фото штрихкода
+    waiting_for_packaging_photo = State()
+    waiting_for_barcode_photo = State()
     waiting_for_other_reason = State()
     waiting_for_attributes_sku = State()
     waiting_for_attributes_comment = State()
@@ -92,11 +92,13 @@ async def cmd_start(message: Message, state: FSMContext):
     await message.answer(
         "🏄‍♂️ **Ахой!**\n\n"
         "Это бот контент-команды **LO**.\n\n"
-        "📌 В этого бота вы можете:\n"
+        "📌 **В этого бота вы можете:**\n"
         "• Оставить заявку на **некорректное фото** товара\n"
         "• Сообщить о **некорректных атрибутах**\n"
         "• Сообщить о товаре **без фото**\n"
         "• Запросить информацию у нашего отдела\n\n"
+        "⚠️ **ВАЖНО:** Чтобы получать ответы оператора, **не закрывайте этот чат**.\n"
+        "Если вы закроете чат, вы не сможете увидеть наши ответы!\n\n"
         "👉 Нажмите **ОК**, чтобы продолжить",
         reply_markup=kb
     )
@@ -107,7 +109,8 @@ async def ask_name(message: Message, state: FSMContext):
     await state.set_state(TicketForm.waiting_for_name)
     await message.answer(
         "📝 **Представьтесь, пожалуйста**\n\n"
-        "Как нам к вам обращаться?",
+        "Как нам к вам обращаться?\n"
+        "*(Например: Иван Петров или просто Иван)*",
         reply_markup=ReplyKeyboardRemove()
     )
 
@@ -119,7 +122,8 @@ async def save_name(message: Message, state: FSMContext):
     
     await message.answer(
         f"✨ **Приятно познакомиться, {message.text}!**\n\n"
-        f"❓ **Какой у вас вопрос?**",
+        f"❓ **Какой у вас вопрос?**\n\n"
+        f"💡 **Напоминание:** Не закрывайте этот чат, чтобы получать ответы оператора.",
         reply_markup=get_main_menu_keyboard()
     )
 
@@ -451,7 +455,9 @@ async def create_ticket(message: Message, state: FSMContext):
             await bot.send_photo(chat_id=OPERATOR_GROUP_ID, photo=barcode_photo_id, message_thread_id=topic_id)
         
         await message.answer(
-            f"✅ **Заявка создана!**\n📌 Номер тикета: `{topic_id}`\n\n👇 Нажмите **«На главную»**",
+            f"✅ **Заявка создана!**\n📌 Номер тикета: `{topic_id}`\n\n"
+            f"💡 **Напоминание:** Не закрывайте этот чат, чтобы получать ответы оператора.\n\n"
+            f"👇 Нажмите **«На главную»**",
             reply_markup=main_menu_kb
         )
         
@@ -513,6 +519,7 @@ async def create_no_photo_ticket(message: Message, state: FSMContext, bot: Bot):
             f"✅ **Заявка принята!**\n"
             f"📌 Мы добавим товар с SKU `{sku}` в план работ.\n"
             f"📌 Номер тикета: `{topic_id}`\n\n"
+            f"💡 **Напоминание:** Не закрывайте этот чат, чтобы получать ответы оператора.\n\n"
             f"👇 Нажмите **«На главную»**",
             reply_markup=main_menu_kb
         )
@@ -564,7 +571,9 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
         await bot.send_message(chat_id=OPERATOR_GROUP_ID, text=ticket_text, message_thread_id=topic_id)
         
         await message.answer(
-            f"✅ **Заявка создана!**\n📌 Номер тикета: `{topic_id}`\n\n👇 Нажмите **«На главную»**",
+            f"✅ **Заявка создана!**\n📌 Номер тикета: `{topic_id}`\n\n"
+            f"💡 **Напоминание:** Не закрывайте этот чат, чтобы получать ответы оператора.\n\n"
+            f"👇 Нажмите **«На главную»**",
             reply_markup=main_menu_kb
         )
         
@@ -613,7 +622,9 @@ async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
         await bot.send_message(chat_id=OPERATOR_GROUP_ID, text=ticket_text, message_thread_id=topic_id)
         
         await message.answer(
-            f"✅ **Вопрос передан!**\n📌 Номер заявки: `{topic_id}`\n\n👇 Нажмите **«На главную»**",
+            f"✅ **Вопрос передан!**\n📌 Номер заявки: `{topic_id}`\n\n"
+            f"💡 **Напоминание:** Не закрывайте этот чат, чтобы получать ответы оператора.\n\n"
+            f"👇 Нажмите **«На главную»**",
             reply_markup=main_menu_kb
         )
         
@@ -628,6 +639,7 @@ async def go_to_main_menu(message: Message, state: FSMContext):
     await state.clear()
     await state.set_state(TicketForm.waiting_for_question_type)
     await message.answer(
-        "🏠 **Главное меню**\n\n❓ **Какой у вас вопрос?**",
+        "🏠 **Главное меню**\n\n❓ **Какой у вас вопрос?**\n\n"
+        "💡 **Напоминание:** Не закрывайте этот чат, чтобы получать ответы оператора.",
         reply_markup=get_main_menu_keyboard()
     )
