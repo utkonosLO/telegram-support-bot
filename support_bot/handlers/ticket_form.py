@@ -109,8 +109,7 @@ async def ask_name(message: Message, state: FSMContext):
     await state.set_state(TicketForm.waiting_for_name)
     await message.answer(
         "📝 **Представьтесь, пожалуйста**\n\n"
-        "Как нам к вам обращаться?\n"
-        "*(Например: Иван Петров или просто Иван)*",
+        "Как нам к вам обращаться?",
         reply_markup=ReplyKeyboardRemove()
     )
 
@@ -454,9 +453,12 @@ async def create_ticket(message: Message, state: FSMContext):
         if has_barcode and barcode_photo_id:
             await bot.send_photo(chat_id=OPERATOR_GROUP_ID, photo=barcode_photo_id, message_thread_id=topic_id)
         
+        # ИСПРАВЛЕННОЕ СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЮ — с просьбой ответить для активации диалога
         await message.answer(
             f"✅ **Заявка создана!**\n📌 Номер тикета: `{topic_id}`\n\n"
-            f"💡 **Напоминание:** Не закрывайте этот чат, чтобы получать ответы оператора.\n\n"
+            f"⚠️ **ВАЖНО:** Чтобы получать ответы оператора, **напишите любое сообщение** "
+            f"(например, «ОК» или «привет») в этот чат. Это активирует диалог.\n\n"
+            f"💡 **Напоминание:** Не закрывайте этот чат, иначе вы не увидите ответы!\n\n"
             f"👇 Нажмите **«На главную»**",
             reply_markup=main_menu_kb
         )
@@ -468,7 +470,7 @@ async def create_ticket(message: Message, state: FSMContext):
 
 
 async def create_no_photo_ticket(message: Message, state: FSMContext, bot: Bot):
-    """Создание тикета для заявки "Нет фото" (без запроса фото)"""
+    """Создание тикета для заявки "Нет фото" """
     data = await state.get_data()
     
     user_name = data.get('user_name')
@@ -515,11 +517,14 @@ async def create_no_photo_ticket(message: Message, state: FSMContext, bot: Bot):
         
         await bot.send_message(chat_id=OPERATOR_GROUP_ID, text=ticket_text, message_thread_id=topic_id)
         
+        # ИСПРАВЛЕННОЕ СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЮ
         await message.answer(
             f"✅ **Заявка принята!**\n"
             f"📌 Мы добавим товар с SKU `{sku}` в план работ.\n"
             f"📌 Номер тикета: `{topic_id}`\n\n"
-            f"💡 **Напоминание:** Не закрывайте этот чат, чтобы получать ответы оператора.\n\n"
+            f"⚠️ **ВАЖНО:** Чтобы получать ответы оператора, **напишите любое сообщение** "
+            f"(например, «ОК» или «привет») в этот чат. Это активирует диалог.\n\n"
+            f"💡 **Напоминание:** Не закрывайте этот чат, иначе вы не увидите ответы!\n\n"
             f"👇 Нажмите **«На главную»**",
             reply_markup=main_menu_kb
         )
@@ -531,7 +536,7 @@ async def create_no_photo_ticket(message: Message, state: FSMContext, bot: Bot):
 
 
 async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot):
-    """Создание тикета для атрибутов (без запроса фото)"""
+    """Создание тикета для атрибутов"""
     data = await state.get_data()
     
     user_name = data.get('user_name')
@@ -570,9 +575,12 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
         
         await bot.send_message(chat_id=OPERATOR_GROUP_ID, text=ticket_text, message_thread_id=topic_id)
         
+        # ИСПРАВЛЕННОЕ СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЮ
         await message.answer(
             f"✅ **Заявка создана!**\n📌 Номер тикета: `{topic_id}`\n\n"
-            f"💡 **Напоминание:** Не закрывайте этот чат, чтобы получать ответы оператора.\n\n"
+            f"⚠️ **ВАЖНО:** Чтобы получать ответы оператора, **напишите любое сообщение** "
+            f"(например, «ОК» или «привет») в этот чат. Это активирует диалог.\n\n"
+            f"💡 **Напоминание:** Не закрывайте этот чат, иначе вы не увидите ответы!\n\n"
             f"👇 Нажмите **«На главную»**",
             reply_markup=main_menu_kb
         )
@@ -621,9 +629,12 @@ async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
         
         await bot.send_message(chat_id=OPERATOR_GROUP_ID, text=ticket_text, message_thread_id=topic_id)
         
+        # ИСПРАВЛЕННОЕ СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЮ
         await message.answer(
             f"✅ **Вопрос передан!**\n📌 Номер заявки: `{topic_id}`\n\n"
-            f"💡 **Напоминание:** Не закрывайте этот чат, чтобы получать ответы оператора.\n\n"
+            f"⚠️ **ВАЖНО:** Чтобы получать ответы оператора, **напишите любое сообщение** "
+            f"(например, «ОК» или «привет») в этот чат. Это активирует диалог.\n\n"
+            f"💡 **Напоминание:** Не закрывайте этот чат, иначе вы не увидите ответы!\n\n"
             f"👇 Нажмите **«На главную»**",
             reply_markup=main_menu_kb
         )
