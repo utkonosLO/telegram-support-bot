@@ -57,25 +57,13 @@ def get_back_keyboard():
 
 
 def get_skip_keyboard():
-    """Клавиатура с кнопкой пропуска"""
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="⏭️ Пропустить")]],
         resize_keyboard=True
     )
 
 
-def get_inline_main_menu():
-    """Inline-клавиатура для главного меню"""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📸 Некорректное фото", callback_data="menu_photo")],
-        [InlineKeyboardButton(text="✍️ Некорректные атрибуты", callback_data="menu_attributes")],
-        [InlineKeyboardButton(text="❌ Нет фото", callback_data="menu_no_photo")],
-        [InlineKeyboardButton(text="❓ Задать вопрос", callback_data="menu_question")]
-    ])
-
-
 def get_inline_activate_keyboard(topic_id: int):
-    """Inline-клавиатура для активации диалога"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Активировать получение ответов", callback_data=f"activate_{topic_id}")],
         [InlineKeyboardButton(text="🏠 На главную", callback_data="main_menu")]
@@ -83,7 +71,6 @@ def get_inline_activate_keyboard(topic_id: int):
 
 
 async def check_name(message: Message, state: FSMContext) -> bool:
-    """Проверяет, представился ли пользователь"""
     data = await state.get_data()
     if not data.get('user_name'):
         await state.set_state(TicketForm.waiting_for_name)
@@ -97,11 +84,8 @@ async def check_name(message: Message, state: FSMContext) -> bool:
     return True
 
 
-# ========== ОБРАБОТЧИКИ INLINE-КНОПОК ==========
-
 @router.callback_query(F.data.startswith("activate_"))
 async def activate_dialog(callback: CallbackQuery, state: FSMContext):
-    """Активация диалога пользователем"""
     topic_id = callback.data.split("_")[1]
     await callback.answer("✅ Диалог активирован!")
     await callback.message.answer(
@@ -110,7 +94,6 @@ async def activate_dialog(callback: CallbackQuery, state: FSMContext):
         "💡 Не закрывайте этот чат, чтобы не пропустить ответы.",
         reply_markup=ReplyKeyboardRemove()
     )
-    # Переводим в главное меню
     await state.set_state(TicketForm.waiting_for_question_type)
     await callback.message.answer(
         "🏠 **Главное меню**\n\n❓ **Какой у вас вопрос?**",
@@ -120,67 +103,14 @@ async def activate_dialog(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "main_menu")
 async def main_menu_callback(callback: CallbackQuery, state: FSMContext):
-    """Возврат в главное меню по кнопке"""
     await callback.answer()
     await state.clear()
     await state.set_state(TicketForm.waiting_for_question_type)
     await callback.message.answer(
-        "🏠 **Главное меню**\n\n❓ **Какой у вас вопрос?**\n\n"
-        "💡 **Напоминание:** Не закрывайте этот чат, чтобы получать ответы оператора.",
+        "🏠 **Главное меню**\n\n❓ **Какой у вас вопрос?**",
         reply_markup=get_main_menu_keyboard()
     )
 
-
-@router.callback_query(F.data == "menu_photo")
-async def menu_photo_callback(callback: CallbackQuery, state: FSMContext):
-    """Обработчик выбора 'Некорректное фото' из inline-меню"""
-    await callback.answer()
-    await callback.message.answer(
-        "📸 **Шаг 1: Приложите фото упаковки товара**\n\n"
-        "Сфотографируйте упаковку товара и отправьте фото.\n\n"
-        "📌 *Это поможет нам идентифицировать товар*\n\n"
-        "• Отправьте фото упаковки\n"
-        "• Или нажмите «Пропустить»",
-        reply_markup=get_skip_keyboard()
-    )
-    await state.set_state(TicketForm.waiting_for_packaging_photo)
-
-
-@router.callback_query(F.data == "menu_attributes")
-async def menu_attributes_callback(callback: CallbackQuery, state: FSMContext):
-    """Обработчик выбора 'Некорректные атрибуты' из inline-меню"""
-    await callback.answer()
-    await callback.message.answer(
-        "✍️ **Некорректные атрибуты**\n\n📦 Введите **шестизначный номер SKU** товара:",
-        reply_markup=get_back_keyboard()
-    )
-    await state.set_state(TicketForm.waiting_for_attributes_sku)
-
-
-@router.callback_query(F.data == "menu_no_photo")
-async def menu_no_photo_callback(callback: CallbackQuery, state: FSMContext):
-    """Обработчик выбора 'Нет фото' из inline-меню"""
-    await callback.answer()
-    await callback.message.answer(
-        "😔 **Товар без фото**\n\n"
-        "📦 Введите **шестизначный номер SKU** товара, чтобы мы могли добавить его в план работ:",
-        reply_markup=get_back_keyboard()
-    )
-    await state.set_state(TicketForm.waiting_for_no_photo_sku)
-
-
-@router.callback_query(F.data == "menu_question")
-async def menu_question_callback(callback: CallbackQuery, state: FSMContext):
-    """Обработчик выбора 'Задать вопрос' из inline-меню"""
-    await callback.answer()
-    await callback.message.answer(
-        "💬 **Опишите ваш вопрос или проблему**\n\n✏️ Напишите ваш вопрос:",
-        reply_markup=get_back_keyboard()
-    )
-    await state.set_state(TicketForm.waiting_for_other_reason)
-
-
-# ========== СТАРТ ==========
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
@@ -195,13 +125,12 @@ async def cmd_start(message: Message, state: FSMContext):
     await message.answer(
         "🏄‍♂️ **Ахой!**\n\n"
         "Это бот контент-команды **LO**.\n\n"
-        "📌 **В этого бота вы можете:**\n"
+        "📌 **Вы можете:**\n"
         "• Оставить заявку на **некорректное фото** товара\n"
         "• Сообщить о **некорректных атрибутах**\n"
         "• Сообщить о товаре **без фото**\n"
         "• Запросить информацию у нашего отдела\n\n"
-        "⚠️ **ВАЖНО:** Чтобы получать ответы оператора, **не закрывайте этот чат**.\n"
-        "Если вы закроете чат, вы не сможете увидеть наши ответы!\n\n"
+        "⚠️ **ВАЖНО:** Чтобы получать ответы оператора, **не закрывайте этот чат**.\n\n"
         "👉 Нажмите **ОК**, чтобы продолжить",
         reply_markup=kb
     )
@@ -211,8 +140,7 @@ async def cmd_start(message: Message, state: FSMContext):
 async def ask_name(message: Message, state: FSMContext):
     await state.set_state(TicketForm.waiting_for_name)
     await message.answer(
-        "📝 **Представьтесь, пожалуйста**\n\n"
-        "Как нам к вам обращаться?",
+        "📝 **Представьтесь, пожалуйста**\n\nКак нам к вам обращаться?",
         reply_markup=ReplyKeyboardRemove()
     )
 
@@ -221,16 +149,64 @@ async def ask_name(message: Message, state: FSMContext):
 async def save_name(message: Message, state: FSMContext):
     await state.update_data(user_name=message.text)
     await state.set_state(TicketForm.waiting_for_question_type)
-    
     await message.answer(
         f"✨ **Приятно познакомиться, {message.text}!**\n\n"
-        f"❓ **Какой у вас вопрос?**\n\n"
-        f"💡 **Напоминание:** Не закрывайте этот чат, чтобы получать ответы оператора.",
+        f"❓ **Какой у вас вопрос?**",
         reply_markup=get_main_menu_keyboard()
     )
 
 
-# ========== ФОТО УПАКОВКИ ==========
+# ========== ОБРАБОТЧИКИ ДЛЯ REPLY-КНОПОК ГЛАВНОГО МЕНЮ ==========
+
+@router.message(TicketForm.waiting_for_question_type, F.text == "📸 Некорректное фото")
+async def photo_question_reply(message: Message, state: FSMContext):
+    if not await check_name(message, state):
+        return
+    await state.set_state(TicketForm.waiting_for_packaging_photo)
+    await message.answer(
+        "📸 **Шаг 1: Приложите фото упаковки товара**\n\n"
+        "Сфотографируйте упаковку и отправьте фото.\n\n"
+        "• Отправьте фото упаковки\n"
+        "• Или нажмите «Пропустить»",
+        reply_markup=get_skip_keyboard()
+    )
+
+
+@router.message(TicketForm.waiting_for_question_type, F.text == "✍️ Некорректные атрибуты")
+async def attributes_question_reply(message: Message, state: FSMContext):
+    if not await check_name(message, state):
+        return
+    await state.set_state(TicketForm.waiting_for_attributes_sku)
+    await message.answer(
+        "✍️ **Некорректные атрибуты**\n\n📦 Введите **шестизначный номер SKU** товара:",
+        reply_markup=get_back_keyboard()
+    )
+
+
+@router.message(TicketForm.waiting_for_question_type, F.text == "❌ Нет фото")
+async def no_photo_question_reply(message: Message, state: FSMContext):
+    if not await check_name(message, state):
+        return
+    await state.set_state(TicketForm.waiting_for_no_photo_sku)
+    await message.answer(
+        "😔 **Товар без фото**\n\n📦 Введите **шестизначный номер SKU** товара:",
+        reply_markup=get_back_keyboard()
+    )
+
+
+@router.message(TicketForm.waiting_for_question_type, F.text == "❓ Задать вопрос")
+async def ask_question_reply(message: Message, state: FSMContext):
+    if not await check_name(message, state):
+        return
+    await state.set_state(TicketForm.waiting_for_other_reason)
+    await message.answer(
+        "💬 **Опишите ваш вопрос или проблему**\n\n✏️ Напишите ваш вопрос:",
+        reply_markup=get_back_keyboard()
+    )
+
+
+# ========== ОСТАЛЬНЫЕ ОБРАБОТЧИКИ (фото, атрибуты, создание тикетов) ==========
+# ... (остальной код остаётся без изменений) ...
 
 @router.message(TicketForm.waiting_for_packaging_photo, F.photo)
 async def handle_packaging_photo(message: Message, state: FSMContext):
@@ -240,8 +216,6 @@ async def handle_packaging_photo(message: Message, state: FSMContext):
     await state.set_state(TicketForm.waiting_for_barcode_photo)
     await message.answer(
         "📸 **Шаг 2: Приложите фото штрихкода с упаковки товара**\n\n"
-        "Дополнительно приложите фото штрихкода на упаковке.\n\n"
-        "📌 *Это поможет нам быстрее обработать вашу заявку*\n\n"
         "• Отправьте фото ШК\n"
         "• Или нажмите «Пропустить»",
         reply_markup=get_skip_keyboard()
@@ -255,23 +229,11 @@ async def skip_packaging_photo(message: Message, state: FSMContext):
     await state.set_state(TicketForm.waiting_for_barcode_photo)
     await message.answer(
         "📸 **Шаг 2: Приложите фото штрихкода с упаковки товара**\n\n"
-        "Дополнительно приложите фото штрихкода на упаковке.\n\n"
-        "📌 *Это поможет нам быстрее обработать вашу заявку*\n\n"
         "• Отправьте фото ШК\n"
         "• Или нажмите «Пропустить»",
         reply_markup=get_skip_keyboard()
     )
 
-
-@router.message(TicketForm.waiting_for_packaging_photo, F.text)
-async def invalid_packaging_response(message: Message, state: FSMContext):
-    await message.answer(
-        "❓ Пожалуйста, отправьте **фото упаковки** или нажмите **«Пропустить»**.",
-        reply_markup=get_skip_keyboard()
-    )
-
-
-# ========== ФОТО ШТРИХКОДА ==========
 
 @router.message(TicketForm.waiting_for_barcode_photo, F.photo)
 async def handle_barcode_photo(message: Message, state: FSMContext):
@@ -293,14 +255,6 @@ async def skip_barcode_photo(message: Message, state: FSMContext):
     await message.answer(
         "🖼️ **Некорректное фото**\n\nЧто именно нужно сделать с фото?",
         reply_markup=get_photo_menu_keyboard()
-    )
-
-
-@router.message(TicketForm.waiting_for_barcode_photo, F.text)
-async def invalid_barcode_response(message: Message, state: FSMContext):
-    await message.answer(
-        "❓ Пожалуйста, отправьте **фото штрихкода** или нажмите **«Пропустить»**.",
-        reply_markup=get_skip_keyboard()
     )
 
 
@@ -333,8 +287,6 @@ async def photo_back(message: Message, state: FSMContext):
     await message.answer("❓ **Какой у вас вопрос?**", reply_markup=get_main_menu_keyboard())
 
 
-# ========== SKU И КОММЕНТАРИЙ ==========
-
 @router.message(TicketForm.waiting_for_sku, F.text)
 async def get_photo_sku(message: Message, state: FSMContext):
     if message.text == "◀️ Назад":
@@ -361,7 +313,7 @@ async def get_photo_comment(message: Message, state: FSMContext):
     await create_ticket(message, state)
 
 
-# ========== НЕТ ФОТО: SKU И КОММЕНТАРИЙ ==========
+# ========== НЕТ ФОТО ==========
 
 @router.message(TicketForm.waiting_for_no_photo_sku, F.text)
 async def get_no_photo_sku(message: Message, state: FSMContext):
@@ -374,7 +326,7 @@ async def get_no_photo_sku(message: Message, state: FSMContext):
     await state.set_state(TicketForm.waiting_for_no_photo_comment)
     await message.answer(
         "💬 **Введите комментарий** (необязательно)\n\n"
-        "Опишите ситуацию или оставьте поле пустым:",
+        "Опишите ситуацию:",
         reply_markup=get_back_keyboard()
     )
 
@@ -432,10 +384,9 @@ async def get_other_question(message: Message, state: FSMContext, bot: Bot):
     await create_other_ticket(message, state, bot)
 
 
-# ========== ФУНКЦИИ СОЗДАНИЯ ТИКЕТОВ ==========
+# ========== СОЗДАНИЕ ТИКЕТОВ ==========
 
 async def create_ticket(message: Message, state: FSMContext):
-    """Создание тикета для заявки по фото"""
     data = await state.get_data()
     
     user_name = data.get('user_name')
@@ -500,10 +451,8 @@ async def create_ticket(message: Message, state: FSMContext):
         if has_barcode and barcode_photo_id:
             await bot.send_photo(chat_id=OPERATOR_GROUP_ID, photo=barcode_photo_id, message_thread_id=topic_id)
         
-        # Отправляем сообщение с inline-кнопками для активации диалога
         await message.answer(
             f"✅ **Заявка создана!**\n📌 Номер тикета: `{topic_id}`\n\n"
-            f"💡 **Напоминание:** Не закрывайте этот чат, иначе вы не увидите ответы!\n\n"
             f"👇 Нажмите на кнопку ниже, чтобы активировать получение ответов:",
             reply_markup=get_inline_activate_keyboard(topic_id)
         )
@@ -515,7 +464,6 @@ async def create_ticket(message: Message, state: FSMContext):
 
 
 async def create_no_photo_ticket(message: Message, state: FSMContext, bot: Bot):
-    """Создание тикета для заявки "Нет фото" """
     data = await state.get_data()
     
     user_name = data.get('user_name')
@@ -561,7 +509,6 @@ async def create_no_photo_ticket(message: Message, state: FSMContext, bot: Bot):
             f"✅ **Заявка принята!**\n"
             f"📌 Мы добавим товар с SKU `{sku}` в план работ.\n"
             f"📌 Номер тикета: `{topic_id}`\n\n"
-            f"💡 **Напоминание:** Не закрывайте этот чат, иначе вы не увидите ответы!\n\n"
             f"👇 Нажмите на кнопку ниже, чтобы активировать получение ответов:",
             reply_markup=get_inline_activate_keyboard(topic_id)
         )
@@ -573,7 +520,6 @@ async def create_no_photo_ticket(message: Message, state: FSMContext, bot: Bot):
 
 
 async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot):
-    """Создание тикета для атрибутов"""
     data = await state.get_data()
     
     user_name = data.get('user_name')
@@ -609,7 +555,6 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
         
         await message.answer(
             f"✅ **Заявка создана!**\n📌 Номер тикета: `{topic_id}`\n\n"
-            f"💡 **Напоминание:** Не закрывайте этот чат, иначе вы не увидите ответы!\n\n"
             f"👇 Нажмите на кнопку ниже, чтобы активировать получение ответов:",
             reply_markup=get_inline_activate_keyboard(topic_id)
         )
@@ -621,7 +566,6 @@ async def create_attributes_ticket(message: Message, state: FSMContext, bot: Bot
 
 
 async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
-    """Создание тикета для вопроса"""
     data = await state.get_data()
     
     user_name = data.get('user_name')
@@ -655,7 +599,6 @@ async def create_other_ticket(message: Message, state: FSMContext, bot: Bot):
         
         await message.answer(
             f"✅ **Вопрос передан!**\n📌 Номер заявки: `{topic_id}`\n\n"
-            f"💡 **Напоминание:** Не закрывайте этот чат, иначе вы не увидите ответы!\n\n"
             f"👇 Нажмите на кнопку ниже, чтобы активировать получение ответов:",
             reply_markup=get_inline_activate_keyboard(topic_id)
         )
@@ -671,7 +614,6 @@ async def go_to_main_menu(message: Message, state: FSMContext):
     await state.clear()
     await state.set_state(TicketForm.waiting_for_question_type)
     await message.answer(
-        "🏠 **Главное меню**\n\n❓ **Какой у вас вопрос?**\n\n"
-        "💡 **Напоминание:** Не закрывайте этот чат, чтобы получать ответы оператора.",
+        "🏠 **Главное меню**\n\n❓ **Какой у вас вопрос?**",
         reply_markup=get_main_menu_keyboard()
     )
